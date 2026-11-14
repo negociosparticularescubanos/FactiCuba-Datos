@@ -776,4 +776,75 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   setInterval(function () { if (!subiendo) ping(); }, 120000);
 })();
 </script>
+<script>
+/* ============ fcClave: cambiar mi contraseña (dentro de la app, solo admin) ============
+   Botón «🔑 Contraseña» junto a «Salir». Pide la actual y la nueva dos veces;
+   la nueva se guarda en este equipo (localStorage), como el resto del acceso. */
+(function () {
+  function montar() {
+    var salir = document.getElementById("logoutBtn");
+    if (!salir || document.getElementById("fcClaveBtn")) return !!salir;
+    var btn = document.createElement("button");
+    btn.id = "fcClaveBtn";
+    btn.className = "btn btn-ghost btn-sm";
+    btn.type = "button";
+    btn.textContent = "🔑 Contraseña";
+    salir.parentNode.insertBefore(btn, salir);
+
+    var css = document.createElement("style");
+    css.textContent =
+      "#fcClaveFondo{position:fixed;inset:0;background:rgba(4,10,24,.66);display:none;place-items:center;z-index:10000;padding:16px}" +
+      "#fcClaveFondo.abierto{display:grid}" +
+      "#fcClaveCaja{background:rgba(13,24,48,.92);border:1px solid rgba(255,255,255,.22);border-radius:18px;" +
+      "padding:22px;width:min(360px,94vw);color:#eaf2ff;font-family:system-ui,sans-serif;backdrop-filter:blur(10px)}" +
+      "#fcClaveCaja h3{margin:0 0 6px;font-size:17px}" +
+      "#fcClaveCaja p{margin:0 0 12px;font-size:12.5px;opacity:.85}" +
+      "#fcClaveCaja label{display:block;font-size:12px;font-weight:700;margin:10px 0 4px}" +
+      "#fcClaveCaja input{width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.3);" +
+      "background:rgba(255,255,255,.08);color:#fff;font-size:14px}" +
+      "#fcClaveError{color:#ff9a9a;font-size:12.5px;min-height:16px;margin-top:10px}" +
+      "#fcClaveCaja .fila{display:flex;gap:8px;margin-top:14px}" +
+      "#fcClaveCaja .fila button{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.3);cursor:pointer;font-weight:700}" +
+      "#fcClaveGuardar{background:#2e7cf6;color:#fff;border-color:#2e7cf6}" +
+      "#fcClaveCancelar{background:transparent;color:#eaf2ff}";
+    document.head.appendChild(css);
+
+    var fondo = document.createElement("div");
+    fondo.id = "fcClaveFondo";
+    fondo.innerHTML =
+      '<div id="fcClaveCaja"><h3>🔑 Cambiar mi contraseña</h3>' +
+      "<p>Solo para el usuario <b>admin</b> de este equipo. La nueva contraseña se guarda en este dispositivo.</p>" +
+      '<label>Contraseña actual</label><input id="fcClaveActual" type="password" autocomplete="current-password">' +
+      '<label>Contraseña nueva</label><input id="fcClaveNueva" type="password" autocomplete="new-password">' +
+      '<label>Repetir la nueva</label><input id="fcClaveRepite" type="password" autocomplete="new-password">' +
+      '<div id="fcClaveError"></div>' +
+      '<div class="fila"><button id="fcClaveCancelar" type="button">Cancelar</button>' +
+      '<button id="fcClaveGuardar" type="button">Guardar</button></div></div>';
+    document.body.appendChild(fondo);
+
+    var error = fondo.querySelector("#fcClaveError");
+    function abrir() { fondo.classList.add("abierto"); error.textContent = ""; fondo.querySelector("#fcClaveActual").focus(); }
+    function cerrar() { fondo.classList.remove("abierto"); ["fcClaveActual", "fcClaveNueva", "fcClaveRepite"].forEach(function (i) { fondo.querySelector("#" + i).value = ""; }); }
+    btn.addEventListener("click", abrir);
+    fondo.querySelector("#fcClaveCancelar").addEventListener("click", cerrar);
+    fondo.addEventListener("click", function (e) { if (e.target === fondo) cerrar(); });
+    fondo.querySelector("#fcClaveGuardar").addEventListener("click", function () {
+      var actual = fondo.querySelector("#fcClaveActual").value;
+      var nueva = fondo.querySelector("#fcClaveNueva").value;
+      var repite = fondo.querySelector("#fcClaveRepite").value;
+      var users = loadUsers();
+      if (!users.admin) { error.textContent = "Este equipo aún no tiene contraseña fijada."; return; }
+      if (actual !== users.admin) { error.textContent = "La contraseña actual no es correcta."; return; }
+      if (nueva.length < 4) { error.textContent = "La nueva debe tener 4+ caracteres."; return; }
+      if (nueva !== repite) { error.textContent = "La nueva y su repetición no coinciden."; return; }
+      users.admin = nueva; saveUsers(users);
+      cerrar();
+      if (typeof toast === "function") toast("🔑 Contraseña actualizada");
+      else alert("Contraseña actualizada");
+    });
+    return true;
+  }
+  if (!montar()) { var t = setInterval(function () { if (montar()) clearInterval(t); }, 500); }
+})();
+</script>
 
