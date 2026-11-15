@@ -847,4 +847,209 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   if (!montar()) { var t = setInterval(function () { if (montar()) clearInterval(t); }, 500); }
 })();
 </script>
+<script>
+/* ============ fcNecesidades: pestaña «Necesidades del Municipio» ============
+   Plan de inversiones 2027-2032 en CUP y USD, calculado EN VIVO.
+   - Se elige provincia y municipio (se precarga desde la plantilla del Plan).
+   - Muestra como referencia lo ya capturado: población y hogares (ONEI),
+     déficit y necesidades (Plan EDM) — nunca inventa cifras.
+   - Cada línea: cantidad × costo unitario (CUP y/o USD) y su reparto % por año.
+   - Se guarda con el resto de los datos (data.necesidades) vía persist(). */
+(function () {
+  var ANOS = [2027, 2028, 2029, 2030, 2031, 2032];
+  var activo = false;
+
+  var CATALOGO = [
+    ["Agua y saneamiento", "Ampliación y reparación de acueducto y alcantarillado", "km de red"],
+    ["Energía", "Electrificación, alumbrado y fuentes renovables", "puntos / MW"],
+    ["Vivienda", "Construcción y rehabilitación de viviendas", "viviendas"],
+    ["Vialidad y transporte", "Reparación de viales, puentes y transporte local", "km"],
+    ["Salud", "Reparación y equipamiento de instituciones de salud", "instituciones"],
+    ["Educación", "Reparación y equipamiento de escuelas", "escuelas"],
+    ["Producción de alimentos", "Fomento agrícola, ganadero y minindustrias", "hectáreas / entidades"],
+    ["Turismo", "Infraestructura y servicios turísticos", "instalaciones"],
+    ["Industria y comercio local", "Minindustrias y servicios a la población", "entidades"],
+    ["Medio ambiente", "Saneamiento ambiental y áreas protegidas", "proyectos"],
+    ["Comunicaciones", "Cobertura móvil, internet y telefonía", "radiobases / zonas"]
+  ];
+
+  function defecto() {
+    return {
+      provincia: "", municipio: "", tasa: "",
+      filas: CATALOGO.map(function (c) {
+        return { programa: c[0], linea: c[1], unidad: c[2], cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] };
+      })
+    };
+  }
+  function nec() {
+    if (typeof data === "undefined") return null;
+    if (!data.necesidades) data.necesidades = defecto();
+    if (!Array.isArray(data.necesidades.filas)) data.necesidades.filas = defecto().filas;
+    return data.necesidades;
+  }
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; }
+  function fmt(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 0 }) : "—"; }
+  function fmt2(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 2 }) : "—"; }
+  function guardar() { if (typeof persist === "function") persist(); }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+  function primerNumero(texto) {
+    var grupos = String(texto || "").match(/\d[\d. ]*\d|\d/g) || [];
+    var mayor = 0;
+    grupos.forEach(function (g) { var v = parseInt(g.replace(/[^\d]/g, ""), 10); if (v > mayor) mayor = v; });
+    return mayor;
+  }
+
+  /* ---------- botón de pestaña (antes de «Revisión») ---------- */
+  var btnRes = document.querySelector('[data-tab="resumen"]');
+  if (!btnRes) return;
+  var btn = document.createElement("button");
+  btn.className = "tab"; btn.type = "button"; btn.id = "tabNecesidades";
+  btn.innerHTML = "<b>🏘️ Necesidades del Municipio</b><span>plan de inversiones 2027-2032 · CUP y USD</span>";
+  btnRes.parentNode.insertBefore(btn, btnRes);
+  btn.addEventListener("click", function () {
+    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    activo = true; pintar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.querySelectorAll(".tab").forEach(function (b) {
+    if (b !== btn) b.addEventListener("click", function () { activo = false; btn.classList.remove("active"); });
+  });
+  /* El botón «Vaciar» de la app no debe tocar las plantillas estando aquí. */
+  var btnVaciar = document.getElementById("clearBtn");
+  if (btnVaciar) btnVaciar.addEventListener("click", function (e) {
+    if (activo) { e.stopImmediatePropagation(); toast("Estás en Necesidades: borra por fila con ✕ o usa «Vaciar plan» dentro de la pestaña."); }
+  }, true);
+
+  /* ---------- vista ---------- */
+  function pintar() {
+    var n = nec(); if (!n) return;
+    /* Precarga solo en campos vacíos, desde las plantillas ya llenadas. */
+    if (!n.provincia && data.plan && data.plan.provincia) n.provincia = data.plan.provincia;
+    if (!n.municipio && data.plan && data.plan.municipio) n.municipio = data.plan.municipio;
+    if (!n.provincia && data.proyecto && data.proyecto.provincia) n.provincia = data.proyecto.provincia;
+    if (!n.municipio && data.proyecto && data.proyecto.municipio) n.municipio = data.proyecto.municipio;
+
+    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
+    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
+    var deficit = data.plan ? (data.plan.deficit || "") : "";
+    var neces = data.plan ? (data.plan.necesidades || "") : "";
+    var provs = (typeof PROVINCIAS !== "undefined") ? Object.keys(PROVINCIAS) : [];
+    var muns = (typeof PROVINCIAS !== "undefined" && PROVINCIAS[n.provincia]) || [];
+
+    var h = '<div class="card"><h3><span class="num">🏘️</span>Necesidades del Municipio — Plan de inversiones 2027-2032</h3>' +
+      '<p class="sub">Lo que el municipio necesita invertir, en CUP y en USD, para financiar sus programas y proyectos de desarrollo. Todo se calcula en vivo al escribir.</p>' +
+      '<div class="grid">' +
+      '<div class="field"><label>Provincia</label><div class="selwrap"><select class="inp" id="necProv"><option value="">— Seleccionar —</option>' +
+      provs.map(function (p) { return '<option ' + (p === n.provincia ? "selected" : "") + '>' + esc(p) + "</option>"; }).join("") + '</select><span class="chev"></span></div></div>' +
+      '<div class="field"><label>Municipio</label><div class="selwrap"><select class="inp" id="necMuni"><option value="">— Seleccionar —</option>' +
+      muns.map(function (m) { return '<option ' + (m === n.municipio ? "selected" : "") + '>' + esc(m) + "</option>"; }).join("") + '</select><span class="chev"></span></div></div>' +
+      '<div class="field"><label>Tasa de cambio (CUP por 1 USD, para equivalencias)</label><input class="inp" id="necTasa" type="number" min="0" step="any" placeholder="Ej.: la informal vigente" value="' + esc(n.tasa) + '"></div>' +
+      "</div>" +
+      '<div class="hint" style="margin-top:8px">📊 Según tus plantillas: ' +
+      (pob ? "población ≈ <b>" + fmt(pob) + "</b> · " : "") + (hog ? "hogares ≈ <b>" + fmt(hog) + "</b> · " : "") +
+      "los costos unitarios los pones tú (del plan municipal, de presupuestos o de cotizaciones): lo que no sepas, déjalo en blanco y la línea suma 0.</div>" +
+      (deficit ? '<div class="hint" style="margin-top:6px">📌 <b>Déficit declarado en el Plan EDM:</b> ' + esc(deficit) + "</div>" : "") +
+      (neces ? '<div class="hint" style="margin-top:6px">📌 <b>Necesidades sin cubrir (Plan EDM):</b> ' + esc(neces) + "</div>" : "") +
+      "</div>";
+
+    h += '<div class="card"><h3><span class="num">📋</span>Líneas de inversión</h3><p class="sub">Cantidad necesaria × costo unitario. El reparto por año es en % de cada línea (debe sumar 100).</p>' +
+      '<div style="overflow-x:auto"><table id="necTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">' +
+      "<thead><tr>" +
+      ["Programa", "Línea de inversión", "Unidad", "Cantidad", "Costo unit. CUP", "Costo unit. USD", "Total CUP", "Total USD", "% " + ANOS.join(" · % "), ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
+      "</tr></thead><tbody>";
+    n.filas.forEach(function (f, i) {
+      h += '<tr data-fila="' + i + '">' +
+        '<td><input class="inp necIn" data-c="programa" value="' + esc(f.programa) + '"></td>' +
+        '<td><input class="inp necIn" data-c="linea" value="' + esc(f.linea) + '"></td>' +
+        '<td><input class="inp necIn" data-c="unidad" value="' + esc(f.unidad) + '" style="max-width:90px"></td>' +
+        '<td><input class="inp necIn" data-c="cantidad" type="number" min="0" step="any" value="' + esc(f.cantidad) + '" style="max-width:90px"></td>' +
+        '<td><input class="inp necIn" data-c="costoCUP" type="number" min="0" step="any" value="' + esc(f.costoCUP) + '" style="max-width:110px"></td>' +
+        '<td><input class="inp necIn" data-c="costoUSD" type="number" min="0" step="any" value="' + esc(f.costoUSD) + '" style="max-width:110px"></td>' +
+        '<td class="necTotCUP" style="font-weight:700;white-space:nowrap"></td>' +
+        '<td class="necTotUSD" style="font-weight:700;white-space:nowrap"></td>' +
+        ANOS.map(function (a, j) { return '<td><input class="inp necIn" data-c="dist' + j + '" type="number" min="0" max="100" step="any" value="' + esc(f.dist[j]) + '" style="max-width:58px"></td>'; }).join("") +
+        '<td><button type="button" class="btn btn-ghost btn-sm necDel" title="Quitar línea">✕</button></td></tr>';
+    });
+    h += "</tbody></table></div>" +
+      '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-ghost" id="necAdd">➕ Añadir línea</button>' +
+      '<button type="button" class="btn btn-ghost" id="necPrint">🖨 Imprimir el plan</button>' +
+      '<button type="button" class="btn btn-ghost" id="necClear">🧹 Vaciar plan</button></div></div>';
+
+    h += '<div class="card"><h3><span class="num">📆</span>El plan por años</h3><p class="sub">Distribución anual de la inversión necesaria, según el reparto de cada línea.</p><div id="necAnos"></div></div>';
+    h += '<div class="card"><h3><span class="num">💰</span>Resumen del financiamiento necesario</h3><div id="necResumen"></div></div>';
+
+    document.getElementById("formCtn").innerHTML = h;
+    cablear(); recalcular();
+  }
+
+  function cablear() {
+    var n = nec();
+    document.getElementById("necProv").addEventListener("change", function () { n.provincia = this.value; n.municipio = ""; guardar(); pintar(); });
+    document.getElementById("necMuni").addEventListener("change", function () { n.municipio = this.value; guardar(); });
+    document.getElementById("necTasa").addEventListener("input", function () { n.tasa = this.value; guardar(); recalcular(); });
+    document.querySelectorAll("#necTabla tbody tr").forEach(function (tr) {
+      var i = +tr.getAttribute("data-fila");
+      tr.querySelectorAll(".necIn").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          var c = inp.getAttribute("data-c");
+          if (c.indexOf("dist") === 0) n.filas[i].dist[+c.slice(4)] = inp.value;
+          else n.filas[i][c] = inp.value;
+          guardar(); recalcular();
+        });
+      });
+      tr.querySelector(".necDel").addEventListener("click", function () {
+        if (!confirm("¿Quitar esta línea del plan?")) return;
+        n.filas.splice(i, 1); guardar(); pintar();
+      });
+    });
+    document.getElementById("necAdd").addEventListener("click", function () {
+      n.filas.push({ programa: "", linea: "", unidad: "", cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
+      guardar(); pintar();
+    });
+    document.getElementById("necPrint").addEventListener("click", function () { window.print(); });
+    document.getElementById("necClear").addEventListener("click", function () {
+      if (!confirm("¿Vaciar todo el plan de necesidades?")) return;
+      data.necesidades = defecto(); guardar(); pintar();
+    });
+  }
+
+  function recalcular() {
+    var n = nec(); if (!n) return;
+    var totCUP = 0, totUSD = 0;
+    var porAno = ANOS.map(function () { return { cup: 0, usd: 0 }; });
+    var porProg = {};
+    document.querySelectorAll("#necTabla tbody tr").forEach(function (tr) {
+      var i = +tr.getAttribute("data-fila"); var f = n.filas[i];
+      var c = num(f.cantidad), tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      tr.querySelector(".necTotCUP").textContent = fmt(tc);
+      tr.querySelector(".necTotUSD").textContent = fmt(tu);
+      totCUP += tc; totUSD += tu;
+      var clave = f.programa || "(sin programa)";
+      porProg[clave] = porProg[clave] || { cup: 0, usd: 0 };
+      porProg[clave].cup += tc; porProg[clave].usd += tu;
+      ANOS.forEach(function (a, j) { var p = num(f.dist[j]) / 100; porAno[j].cup += tc * p; porAno[j].usd += tu * p; });
+    });
+    var anos = document.getElementById("necAnos");
+    if (anos) {
+      anos.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>' +
+        ["Año", "Inversión en CUP", "Inversión en USD"].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") + "</tr></thead><tbody>" +
+        ANOS.map(function (a, j) { return "<tr><td style='padding:6px'><b>" + a + "</b></td><td style='padding:6px'>" + fmt(porAno[j].cup) + "</td><td style='padding:6px'>" + fmt(porAno[j].usd) + "</td></tr>"; }).join("") +
+        "<tr><td style='padding:6px'><b>TOTAL 2027-2032</b></td><td style='padding:6px'><b>" + fmt(totCUP) + "</b></td><td style='padding:6px'><b>" + fmt(totUSD) + "</b></td></tr></tbody></table>";
+    }
+    var res = document.getElementById("necResumen");
+    if (res) {
+      var tasa = num(n.tasa);
+      var filas = Object.keys(porProg).map(function (p) {
+        return "<tr><td style='padding:6px'>" + esc(p) + "</td><td style='padding:6px'>" + fmt(porProg[p].cup) + "</td><td style='padding:6px'>" + fmt(porProg[p].usd) + "</td></tr>";
+      }).join("");
+      res.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>' +
+        ["Programa", "CUP", "USD"].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") + "</tr></thead><tbody>" + filas +
+        "<tr><td style='padding:6px'><b>Necesidad total del municipio</b></td><td style='padding:6px'><b>" + fmt(totCUP) + " CUP</b></td><td style='padding:6px'><b>" + fmt(totUSD) + " USD</b></td></tr></tbody></table>" +
+        (tasa ? '<p class="hint" style="margin-top:8px">Equivalencia a la tasa puesta (' + fmt2(tasa) + " CUP/USD): la parte en USD equivale a <b>" + fmt(totUSD * tasa) + " CUP</b>; necesidad total equivalente ≈ <b>" + fmt(totCUP + totUSD * tasa) + " CUP</b>.</p>" : '<p class="hint" style="margin-top:8px">Pon la tasa de cambio arriba para ver la equivalencia total en CUP.</p>') +
+        '<p class="hint">Las cantidades y los costos unitarios salen del plan municipal, de presupuestos o de cotizaciones: esta pestaña modela en vivo con los datos que se escriban; no inventa cifras.</p>';
+    }
+  }
+})();
+</script>
 
