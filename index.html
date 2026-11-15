@@ -1000,6 +1000,9 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
 
     h += '<div class="card"><h3><span class="num">📆</span>El plan por años</h3><p class="sub">Distribución anual de la inversión necesaria, según el reparto de cada línea.</p><div id="necAnos"></div></div>';
     h += '<div class="card"><h3><span class="num">💰</span>Resumen del financiamiento necesario</h3><div id="necResumen"></div></div>';
+    h += '<div class="card"><h3><span class="num">🗣️</span>Presentar el plan al pueblo</h3>' +
+      '<p class="sub">Un informe con el mismo formato para cualquier municipio, en palabras sencillas que cualquier vecino entienda: las 5 necesidades más importantes, qué se va a hacer, cuánto cuesta y qué gana la gente con cada una.</p>' +
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="necInforme">🗣️ Hacer el informe para el pueblo</button></div></div>';
 
     document.getElementById("formCtn").innerHTML = h;
     cablear(); recalcular();
@@ -1025,6 +1028,8 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         n.filas.splice(i, 1); guardar(); pintar();
       });
     });
+    var bInf = document.getElementById("necInforme");
+    if (bInf) bInf.addEventListener("click", pintarInforme);
     var bEdm = document.getElementById("necEdm");
     if (bEdm) bEdm.addEventListener("click", function () {
       var n2 = nec(); var nuevas = 0;
@@ -1149,6 +1154,123 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       guardar(); pintar();
       toast(lista.length ? "🔎 " + lista.length + " necesidades encontradas para " + m : "🔎 Poca evidencia web para " + m);
     }).catch(function () { toast("No se pudo buscar (sin conexión)."); });
+  }
+
+  var PUEBLO = {
+    "Producción de alimentos": {
+      hoy: "Hoy gran parte de la comida viene de fuera del municipio y llega cara o no llega.",
+      hacer: "Sembrar y criar más aquí mismo: patios, organopónicos, fincas, pesca y centros donde se elaboren los alimentos.",
+      gana: "Comida fresca cerca de casa y a mejor precio, menos colas y menos viajes a buscarla, y trabajo para la gente del campo y de la pesca."
+    },
+    "Agua y saneamiento": {
+      hoy: "Hoy el agua llega con problemas: se rompen las redes, hay salideros y en algunos lugares el abasto es irregular.",
+      hacer: "Reparar y ampliar las redes de agua y el alcantarillado, para que el agua llegue bien a cada casa.",
+      gana: "Agua limpia en la llave todos los días, menos enfermedades, y se acabó cargar cubos y esperar la pipa."
+    },
+    "Energía": {
+      hoy: "Hoy los apagones afectan la vida diaria y muchas calles quedan oscuras de noche.",
+      hacer: "Mejorar el servicio eléctrico y el alumbrado, aprovechando también el sol con paneles donde se pueda.",
+      gana: "Menos apagones, calles iluminadas y seguras de noche, y los equipos de la casa duran más."
+    },
+    "Vivienda": {
+      hoy: "Hoy muchas viviendas están deterioradas, con filtraciones y daños acumulados por años.",
+      hacer: "Construir viviendas nuevas y reparar las que están en mal estado, empezando por las familias que peor están.",
+      gana: "Casas seguras y sin filtraciones, donde las familias vivan con tranquilidad, sobre todo cuando viene un ciclón."
+    },
+    "Vialidad y transporte": {
+      hoy: "Hoy las carreteras y caminos están en mal estado y moverse dentro del municipio cuesta trabajo.",
+      hacer: "Reparar los viales y puentes principales y mejorar el transporte de la población.",
+      gana: "Llegar más rápido y seguro a todas partes, menos roturas de vehículos y los productos del campo llegan mejor a los mercados."
+    },
+    "Salud": {
+      hoy: "Hoy las instalaciones de salud necesitan reparaciones y falta equipamiento para atender bien a la población.",
+      hacer: "Reparar y equipar el policlínico, los consultorios y demás instalaciones de salud del municipio.",
+      gana: "Atención médica cerca de casa y en mejores condiciones, sin tener que viajar lejos por cada cosa."
+    },
+    "Educación": {
+      hoy: "Hoy las escuelas necesitan reparaciones y mejores condiciones para los niños y los maestros.",
+      hacer: "Reparar y equipar las escuelas y círculos infantiles del municipio.",
+      gana: "Escuelas bonitas y seguras donde los niños aprendan mejor y los maestros trabajen a gusto."
+    },
+    "Turismo": {
+      hoy: "Hoy el turismo puede dar mucho más: faltan instalaciones y servicios para aprovechar lo que el territorio tiene.",
+      hacer: "Mejorar las instalaciones y los servicios para los visitantes, cuidando la naturaleza que es la riqueza del lugar.",
+      gana: "Más trabajo e ingresos para las familias del municipio y dinero que se queda aquí para mejorar el pueblo."
+    },
+    "Industria y comercio local": {
+      hoy: "Hoy faltan producciones y servicios locales: muchas cosas hay que buscarlas fuera del municipio.",
+      hacer: "Crear y fortalecer minindustrias y servicios de la población, con lo que se produce aquí.",
+      gana: "Empleo en el propio municipio y productos hechos aquí, sin depender de que vengan de fuera."
+    },
+    "Medio ambiente": {
+      hoy: "Hoy hay problemas de contaminación y de cuidado de la naturaleza que afectan la salud y el futuro del territorio.",
+      hacer: "Limpiar y sanear el entorno, recoger bien los residuales y proteger los manglares, las playas y las áreas naturales.",
+      gana: "Un pueblo limpio y sano, naturaleza cuidada para los hijos y nietos, y un lugar más bonito para vivir y visitar."
+    },
+    "Comunicaciones": {
+      hoy: "Hoy la cobertura de teléfonos e internet es mala en varias zonas del municipio.",
+      hacer: "Ampliar la cobertura móvil e internet para llegar a todos los asentamientos.",
+      gana: "Estar comunicados con la familia, internet para estudiar y trabajar, y trámites sin tener que viajar."
+    }
+  };
+  function puebloDe(programa) {
+    var k = Object.keys(PUEBLO).filter(function (x) { return String(programa || "").indexOf(x) === 0; })[0];
+    return k ? PUEBLO[k] : { hoy: "Hoy esta necesidad afecta la vida diaria de la población.", hacer: "Trabajar en esta línea con los recursos del plan.", gana: "Mejoras concretas en la vida de los vecinos del municipio." };
+  }
+  function pintarInforme() {
+    var n = nec(); if (!n) return;
+    if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
+    var tasa = num(n.tasa);
+    var porProg = {};
+    n.filas.forEach(function (f) {
+      var c = num(f.cantidad); if (!c) return;
+      var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      var k = f.programa || "Otras necesidades";
+      porProg[k] = porProg[k] || { cup: 0, usd: 0, lineas: [] };
+      porProg[k].cup += tc; porProg[k].usd += tu;
+      if (f.linea) porProg[k].lineas.push(f.linea);
+    });
+    var conDinero = Object.keys(porProg).filter(function (k) { return porProg[k].cup > 0 || porProg[k].usd > 0; });
+    conDinero.sort(function (a, b) {
+      if (a === "Producción de alimentos") return -1;
+      if (b === "Producción de alimentos") return 1;
+      var ea = porProg[a].cup + porProg[a].usd * (tasa || 0), eb = porProg[b].cup + porProg[b].usd * (tasa || 0);
+      return eb - ea;
+    });
+    var elegidas = conDinero.slice(0, 5);
+    ((n.web && n.web.lista) || []).forEach(function (w) {
+      if (elegidas.length < 5 && elegidas.indexOf(w.sector) < 0) elegidas.push(w.sector);
+    });
+    Object.keys(PUEBLO).forEach(function (k) { if (elegidas.length < 5 && elegidas.indexOf(k) < 0) elegidas.push(k); });
+    elegidas = elegidas.slice(0, 5);
+
+    var totCUP = 0, totUSD = 0;
+    Object.keys(porProg).forEach(function (k) { totCUP += porProg[k].cup; totUSD += porProg[k].usd; });
+    var webDe = {};
+    ((n.web && n.web.lista) || []).forEach(function (w) { if (!webDe[w.sector]) webDe[w.sector] = w; });
+
+    var h = '<div class="card"><h3><span class="num">🗣️</span>Informe del plan para el pueblo</h3>' +
+      '<p class="sub">Plan de desarrollo de <b>' + esc(n.municipio) + "</b> (" + esc(n.provincia) + '), años 2027 a 2032. Escrito en palabras sencillas, para presentarlo a la población.</p></div>';
+    h += '<div class="card"><h3>¿De qué trata este plan?</h3><p style="line-height:1.65">Este es el plan de lo que nuestro municipio necesita construir y mejorar entre 2027 y 2032 para que la gente viva mejor. No es un papel guardado en una gaveta: es la lista de las cosas que más falta hacen, con lo que cuesta cada una y lo que gana cada familia cuando se hagan. De todas las necesidades, aquí se presentan las 5 más importantes, explicadas de forma sencilla.</p></div>';
+    elegidas.forEach(function (k, i) {
+      var P = puebloDe(k); var d = porProg[k];
+      var hacer = (d && d.lineas.length) ? d.lineas.slice(0, 3).join("; ") + "." : P.hacer;
+      var hoy = (webDe[k] && webDe[k].hallazgo) ? webDe[k].hallazgo : P.hoy;
+      h += '<div class="card"><h3>' + (i + 1) + ". " + esc(k) + "</h3>" +
+        '<p style="line-height:1.65"><b>Cómo estamos hoy:</b> ' + esc(hoy) + "</p>" +
+        '<p style="line-height:1.65"><b>Qué se va a hacer:</b> ' + esc(hacer) + "</p>" +
+        '<p style="line-height:1.65"><b>Cuánto cuesta:</b> ' + (d ? ("<b>" + fmt(d.cup) + " pesos (CUP)</b> y <b>" + fmt(d.usd) + " dólares (USD)</b>, repartidos entre 2027 y 2032.") : "el costo todavía se está calculando con presupuestos y cotizaciones; no se pone un número inventado.") + "</p>" +
+        '<p style="line-height:1.65"><b>Qué gana la gente:</b> ' + esc(P.gana) + "</p></div>";
+    });
+    h += '<div class="card"><h3>El dinero del plan, en resumen</h3>' +
+      '<p style="line-height:1.65">En total, el municipio necesita invertir <b>' + fmt(totCUP) + " pesos (CUP)</b> y <b>" + fmt(totUSD) + " dólares (USD)</b> en estos seis años. El dinero se reparte por años para ir haciendo las obras poco a poco, empezando por lo que más falta hace — y la primera prioridad es la producción de alimentos.</p>" +
+      '<p style="line-height:1.65"><b>¿Y cómo se controla?</b> Cada obra se sigue paso a paso: el gobierno municipal y las organizaciones del territorio revisan los avances y la población puede preguntar en cualquier momento en qué va cada cosa. Lo que aquí se promete, se cumple o se explica.</p></div>';
+    h += '<div class="btn-row"><button type="button" class="btn btn-primary" id="necInfPrint">🖨 Imprimir el informe</button>' +
+      '<button type="button" class="btn btn-ghost" id="necInfVolver">← Volver al plan</button></div>';
+    document.getElementById("formCtn").innerHTML = h;
+    document.getElementById("necInfVolver").addEventListener("click", pintar);
+    document.getElementById("necInfPrint").addEventListener("click", function () { window.print(); });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function recalcular() {
