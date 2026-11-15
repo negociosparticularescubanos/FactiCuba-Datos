@@ -1,0 +1,79 @@
+<style id="fc-pulido-css">
+/* ===== Pulido v1: legibilidad, textos completos, móvil ===== */
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{line-height:1.5;padding-bottom:96px;background-color:#070b16}
+.card,.rep-row,.miss,.hint,.sub,.stat,.hero p,.tab,.doc-t td,.doc-val,.footer-note,.login-card p{overflow-wrap:anywhere;word-break:normal}
+.grid>*,.rep-row>*,.hero>div{min-width:0}
+.tab b,.tab span{display:block;line-height:1.35}
+.tab span{margin-top:2px}
+.btn{line-height:1.25;text-align:center}
+.btn-row .btn,.toolbar .btn{white-space:normal}
+:focus-visible{outline:3px solid rgba(34,211,238,.7);outline-offset:2px;border-radius:10px}
+td .inp,.estIn,.necIn{text-overflow:clip}
+td textarea.inp{min-height:44px}
+td .inp,td select.inp{padding:10px 9px}
+.fc-guia{background:var(--glass);border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin-bottom:18px;backdrop-filter:blur(16px)}
+.fc-guia h3{font-family:'Sora',system-ui,sans-serif;margin:0 0 10px;font-size:16px}
+.fc-guia ol{margin:0;padding-left:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;counter-reset:p}
+.fc-guia li{counter-increment:p;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;padding:12px 14px 12px 46px;position:relative;font-size:13px;color:var(--mut);line-height:1.5}
+.fc-guia li::before{content:counter(p);position:absolute;left:12px;top:12px;width:24px;height:24px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:12px;color:#04121a;background:linear-gradient(135deg,var(--c1),var(--c3))}
+.fc-guia li b{color:#fff;display:block;margin-bottom:2px;font-size:13.5px}
+#toast{max-width:min(92vw,520px);white-space:normal;text-align:center;line-height:1.4;border-radius:18px;bottom:84px}
+.tabs-wrapper-hint{display:none}
+@media(max-width:760px){
+  .wrap{padding:18px 14px 90px}
+  .tabs{position:static;flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:10px;gap:8px}
+  .tab{flex:0 0 78%;min-width:0;scroll-snap-align:start}
+  .toolbar .btn{flex:1 1 46%}
+  .inp,textarea.inp,select.inp{font-size:16px}
+  .btn,.btn-sm{min-height:44px}
+  .hero{padding:20px}.hero h2{font-size:21px}
+  .top-in{padding:10px 14px}
+  .paper{padding:20px 16px}
+  #fcNube{left:12px;right:12px;justify-content:space-between;flex-wrap:wrap;font-size:12.5px}
+  .tabs-wrapper-hint{display:block;text-align:center;color:var(--mut);font-size:11.5px;margin:-8px 0 12px}
+}
+@media(min-width:1000px){.tab{min-width:165px}.tab b{font-size:13px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{.fc-guia,.tabs-wrapper-hint,#fcNube{display:none!important}body{padding:0}}
+</style>
+<section class="fc-guia" aria-label="Cómo empezar">
+  <h3>🧭 Cómo empezar en 4 pasos</h3>
+  <ol>
+    <li><b>Elige el municipio</b>Empieza por «Plantilla de Proyecto» o «Necesidades del Municipio» y selecciona provincia y municipio.</li>
+    <li><b>Llena las plantillas</b>Completa Proyecto, Plan EDM y datos ONEI. Todo se guarda solo mientras escribes.</li>
+    <li><b>Revisa lo que falta</b>En «Revisión e informe» verás los datos pendientes. Si algo no aplica, escribe «No aplica» y explica por qué.</li>
+    <li><b>Genera el documento</b>Descarga o imprime el informe oficial, o el informe para el pueblo desde «Necesidades del Municipio».</li>
+  </ol>
+</section>
+<p class="tabs-wrapper-hint">↔ Desliza las pestañas para ver todas</p>
+<script id="fc-pulido-js">
+(function(){
+  var $=function(s,c){return (c||document).querySelector(s)};
+  function ajustar(el){
+    if(el.tagName==='TEXTAREA'){el.style.height='auto';el.style.height=Math.min(el.scrollHeight+2,360)+'px';return}
+    if(el.tagName!=='INPUT')return;
+    var t=el.type; if(!el.closest('td,th'))return;
+    if(t==='number'){el.style.minWidth='9ch';return}
+    if(t&&t!=='text'&&t!=='search')return;
+    var n=Math.max(12,Math.min((el.value||el.placeholder||'').length+3,el.classList.contains('estIn')?66:34));
+    el.style.minWidth=n+'ch'; el.title=el.value||'';
+  }
+  function barrer(){document.querySelectorAll('td input.inp,td textarea.inp,textarea.inp').forEach(ajustar)}
+  var tm;function pronto(){clearTimeout(tm);tm=setTimeout(barrer,60)}
+  document.addEventListener('input',function(e){if(/INPUT|TEXTAREA/.test(e.target.tagName))ajustar(e.target)});
+  document.addEventListener('focusin',function(e){var i=e.target;if(i.tagName==='INPUT'&&i.closest&&i.closest('td')&&i.type==='text'&&i.value.length>30)i.style.minWidth=Math.min(i.value.length+3,80)+'ch'});
+  new MutationObserver(pronto).observe(document.body,{childList:true,subtree:true});
+  barrer();
+  // imágenes de fondo/portada que no existan: ocultar sin dejar icono roto
+  document.querySelectorAll('img').forEach(function(i){
+    var f=function(){i.style.display='none'};
+    if(i.complete&&i.naturalWidth===0)f();else i.addEventListener('error',f,{once:true});
+  });
+  // llevar la pestaña activa a la vista en móvil
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('.tabs button');
+    if(b&&b.scrollIntoView)setTimeout(function(){b.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'})},60);
+  });
+})();
+</script>

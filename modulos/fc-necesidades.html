@@ -1,0 +1,650 @@
+<script>
+/* ============ fcNecesidades: pestaña «Necesidades del Municipio» ============
+   Plan de inversiones 2027-2032 en CUP y USD, calculado EN VIVO.
+   - Se elige provincia y municipio (se precarga desde la plantilla del Plan).
+   - Muestra como referencia lo ya capturado: población y hogares (ONEI),
+     déficit y necesidades (Plan EDM) — nunca inventa cifras.
+   - Cada línea: cantidad × costo unitario (CUP y/o USD) y su reparto % por año.
+   - Se guarda con el resto de los datos (data.necesidades) vía persist(). */
+(function () {
+  var ANOS = [2027, 2028, 2029, 2030, 2031, 2032];
+  var activo = false;
+
+  var CATALOGO = [
+    ["Producción de alimentos", "Fomento agrícola, ganadero y minindustrias", "hectáreas / entidades"],
+    ["Agua y saneamiento", "Ampliación y reparación de acueducto y alcantarillado", "km de red"],
+    ["Energía", "Electrificación, alumbrado y fuentes renovables", "puntos / MW"],
+    ["Vivienda", "Construcción y rehabilitación de viviendas", "viviendas"],
+    ["Vialidad y transporte", "Reparación de viales, puentes y transporte local", "km"],
+    ["Salud", "Reparación y equipamiento de instituciones de salud", "instituciones"],
+    ["Educación", "Reparación y equipamiento de escuelas", "escuelas"],
+    ["Turismo", "Infraestructura y servicios turísticos", "instalaciones"],
+    ["Industria y comercio local", "Minindustrias y servicios a la población", "entidades"],
+    ["Medio ambiente", "Saneamiento ambiental y áreas protegidas", "proyectos"],
+    ["Comunicaciones", "Cobertura móvil, internet y telefonía", "radiobases / zonas"]
+  ];
+
+  function defecto() {
+    return {
+      provincia: "", municipio: "", tasa: "", web: null,
+      filas: CATALOGO.map(function (c) {
+        return { programa: c[0], linea: c[1], unidad: c[2], cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] };
+      })
+    };
+  }
+  function nec() {
+    if (typeof data === "undefined") return null;
+    if (!data.necesidades) data.necesidades = defecto();
+    if (!Array.isArray(data.necesidades.filas)) data.necesidades.filas = defecto().filas;
+    return data.necesidades;
+  }
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; }
+  function fmt(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 0 }) : "—"; }
+  function fmt2(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 2 }) : "—"; }
+  function guardar() { if (typeof persist === "function") persist(); }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+  function primerNumero(texto) {
+    var grupos = String(texto || "").match(/\d[\d. ]*\d|\d/g) || [];
+    var mayor = 0;
+    grupos.forEach(function (g) { var v = parseInt(g.replace(/[^\d]/g, ""), 10); if (v > mayor) mayor = v; });
+    return mayor;
+  }
+
+  /* ---------- botón de pestaña (antes de «Revisión») ---------- */
+  var btnRes = document.querySelector('[data-tab="resumen"]');
+  if (!btnRes) return;
+  var btn = document.createElement("button");
+  btn.className = "tab"; btn.type = "button"; btn.id = "tabNecesidades";
+  btn.innerHTML = "<b>🏘️ Necesidades del Municipio</b><span>plan de inversiones 2027-2032 · CUP y USD</span>";
+  btnRes.parentNode.insertBefore(btn, btnRes);
+  btn.addEventListener("click", function () {
+    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    activo = true; pintar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.querySelectorAll(".tab").forEach(function (b) {
+    if (b !== btn) b.addEventListener("click", function () { activo = false; btn.classList.remove("active"); });
+  });
+  /* El botón «Vaciar» de la app no debe tocar las plantillas estando aquí. */
+  var btnVaciar = document.getElementById("clearBtn");
+  if (btnVaciar) btnVaciar.addEventListener("click", function (e) {
+    if (activo) { e.stopImmediatePropagation(); toast("Estás en Necesidades: borra por fila con ✕ o usa «Vaciar plan» dentro de la pestaña."); }
+  }, true);
+
+  /* ---------- vista ---------- */
+  function pintar() {
+    var n = nec(); if (!n) return;
+    /* Precarga solo en campos vacíos, desde las plantillas ya llenadas. */
+    if (!n.provincia && data.plan && data.plan.provincia) n.provincia = data.plan.provincia;
+    if (!n.municipio && data.plan && data.plan.municipio) n.municipio = data.plan.municipio;
+    if (!n.provincia && data.proyecto && data.proyecto.provincia) n.provincia = data.proyecto.provincia;
+    if (!n.municipio && data.proyecto && data.proyecto.municipio) n.municipio = data.proyecto.municipio;
+
+    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
+    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
+    var deficit = data.plan ? (data.plan.deficit || "") : "";
+    var neces = data.plan ? (data.plan.necesidades || "") : "";
+    var provs = (typeof PROVINCIAS !== "undefined") ? Object.keys(PROVINCIAS) : [];
+    var muns = (typeof PROVINCIAS !== "undefined" && PROVINCIAS[n.provincia]) || [];
+
+    var h = '<div class="card"><h3><span class="num">🏘️</span>Necesidades del Municipio — Plan de inversiones 2027-2032</h3>' +
+      '<p class="sub">Lo que el municipio necesita invertir, en CUP y en USD, para financiar sus programas y proyectos de desarrollo. Todo se calcula en vivo al escribir.</p>' +
+      '<div class="grid">' +
+      '<div class="field"><label>Provincia</label><div class="selwrap"><select class="inp" id="necProv"><option value="">— Seleccionar —</option>' +
+      provs.map(function (p) { return '<option ' + (p === n.provincia ? "selected" : "") + '>' + esc(p) + "</option>"; }).join("") + '</select><span class="chev"></span></div></div>' +
+      '<div class="field"><label>Municipio</label><div class="selwrap"><select class="inp" id="necMuni"><option value="">— Seleccionar —</option>' +
+      muns.map(function (m) { return '<option ' + (m === n.municipio ? "selected" : "") + '>' + esc(m) + "</option>"; }).join("") + '</select><span class="chev"></span></div></div>' +
+      '<div class="field"><label>Tasa de cambio (CUP por 1 USD, para equivalencias)</label><input class="inp" id="necTasa" type="number" min="0" step="any" placeholder="Ej.: la informal vigente" value="' + esc(n.tasa) + '"></div>' +
+      "</div>" +
+      '<div class="hint" style="margin-top:8px">📊 Según tus plantillas: ' +
+      (pob ? "población ≈ <b>" + fmt(pob) + "</b> · " : "") + (hog ? "hogares ≈ <b>" + fmt(hog) + "</b> · " : "") +
+      "los costos unitarios los pones tú (del plan municipal, de presupuestos o de cotizaciones): lo que no sepas, déjalo en blanco y la línea suma 0.</div>" +
+      (deficit ? '<div class="hint" style="margin-top:6px">📌 <b>Déficit declarado en el Plan EDM:</b> ' + esc(deficit) + "</div>" : "") +
+      (neces ? '<div class="hint" style="margin-top:6px">📌 <b>Necesidades sin cubrir (Plan EDM):</b> ' + esc(neces) + "</div>" : "") +
+      "</div>";
+
+    h += '<div class="card"><h3><span class="num">⭐</span>Prioridad en todos los municipios: la producción de alimentos</h3>' +
+      '<p class="sub">Por qué va primero, siempre:</p><div class="hint">' +
+      '1) Es prioridad estratégica del país: soberanía alimentaria y seguridad nutricional de la población (Ley 148/2022).<br>' +
+      '2) Los municipios dependen demasiado de alimentos traídos de fuera e importados.<br>' +
+      '3) Hay potencialidades locales subutilizadas: suelos, pesca, recursos hidráulicos, patios y organopónicos.<br>' +
+      '4) Producir cerca (0 km, circuitos cortos) baja precios, crea empleo e ingresos en el medio rural y asegura alimentos frescos.</div></div>';
+
+    if (n.municipio === "Ciénaga de Zapata") {
+      h += '<div class="card"><h3><span class="num">🌱</span>Estrategia municipal (EDM) — Línea 1: Producción de Alimentos</h3>' +
+        '<p class="sub">Política Local de Soberanía Alimentaria y Producción Sostenible de Alimentos. Objetivo: garantizar la soberanía alimentaria y la seguridad nutricional de la población del territorio con producción local sostenible.</p>' +
+        '<div class="hint"><b>Metas:</b> 2026-2027: +20% de producción en patios y organopónicos y 5 mercados agroecológicos locales · 2028-2029: 60% del consumo local de hortalizas, frutas y viandas con producción municipal · 2030: 80% de autoabastecimiento de alimentos básicos.<br>' +
+        '<b>Programas:</b> Del Patio al Plato (0 km) · Economía Social Solidaria «Viva mi Barrio» · Agroecología y agricultura sostenible.<br>' +
+        '<b>Proyectos PDL:</b> Finca Yatobá · La Cantera · Agro Vivo (en reformulación) · Finca Morejón (en formulación) · Finca Los Cocos (en formulación) · Caminos al Vuelo (en formulación) · Recuperación de suelos y manejo del agua (en formulación) · Puerto Pesquero Caletón (en formulación).<br>' +
+        '<b>Responsables:</b> Delegación de la Agricultura, Gobierno Municipal, ECOCIENZAP, CCS, empresas pesqueras.</div>' +
+        '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-primary" id="necEdm">🌱 Cargar las líneas de esta estrategia al plan</button></div></div>';
+    }
+
+    h += '<div class="card"><h3><span class="num">🔎</span>Necesidades detectadas en la web</h3>' +
+      '<p class="sub">Busco en la web las necesidades y carencias publicadas del municipio elegido y te muestro las más importantes con su fuente. Tú decides cuáles pasan al plan: nada entra solo.</p>' +
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="necBuscar">🔎 Buscar necesidades del municipio</button></div>' +
+      '<div id="necWeb" style="margin-top:10px">' + htmlWeb(n) + "</div></div>";
+
+    h += '<div class="card"><h3><span class="num">📋</span>Líneas de inversión</h3><p class="sub">Cantidad necesaria × costo unitario. El reparto por año es en % de cada línea (debe sumar 100).</p>' +
+      '<div style="overflow-x:auto"><table id="necTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">' +
+      "<thead><tr>" +
+      ["Programa", "Línea de inversión", "Unidad", "Cantidad", "Costo unit. CUP", "Costo unit. USD", "Total CUP", "Total USD", "Tipo", "% " + ANOS.join(" · % "), ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
+      "</tr></thead><tbody>";
+    n.filas.forEach(function (f, i) {
+      h += '<tr data-fila="' + i + '">' +
+        '<td>' + (f.programa === "Producción de alimentos" ? '<span title="Prioridad en todos los municipios">⭐</span> ' : '') + '<input class="inp necIn" data-c="programa" value="' + esc(f.programa) + '"></td>' +
+        '<td><input class="inp necIn" data-c="linea" value="' + esc(f.linea) + '"></td>' +
+        '<td><input class="inp necIn" data-c="unidad" value="' + esc(f.unidad) + '" style="max-width:90px"></td>' +
+        '<td><input class="inp necIn" data-c="cantidad" type="number" min="0" step="any" value="' + esc(f.cantidad) + '" style="max-width:90px"></td>' +
+        '<td><input class="inp necIn" data-c="costoCUP" type="number" min="0" step="any" value="' + esc(f.costoCUP) + '" style="max-width:110px"></td>' +
+        '<td><input class="inp necIn" data-c="costoUSD" type="number" min="0" step="any" value="' + esc(f.costoUSD) + '" style="max-width:110px"></td>' +
+        '<td class="necTotCUP" style="font-weight:700;white-space:nowrap"></td>' +
+        '<td class="necTotUSD" style="font-weight:700;white-space:nowrap"></td>' +
+        '<td><select class="inp necIn" data-c="tipo" style="max-width:118px"><option value="CAPEX"' + (f.tipo !== "OPEX" ? " selected" : "") + '>Inversión fija</option><option value="OPEX"' + (f.tipo === "OPEX" ? " selected" : "") + '>Capital de trabajo</option></select></td>' +
+        ANOS.map(function (a, j) { return '<td><input class="inp necIn" data-c="dist' + j + '" type="number" min="0" max="100" step="any" value="' + esc(f.dist[j]) + '" style="max-width:58px"></td>'; }).join("") +
+        '<td><button type="button" class="btn btn-ghost btn-sm necDel" title="Quitar línea">✕</button></td></tr>';
+    });
+    h += "</tbody></table></div>" +
+      '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-ghost" id="necAdd">➕ Añadir línea</button>' +
+      '<button type="button" class="btn btn-ghost" id="necPrint">🖨 Imprimir el plan</button>' +
+      '<button type="button" class="btn btn-ghost" id="necClear">🧹 Vaciar plan</button></div></div>';
+
+    h += '<div class="card"><h3><span class="num">📆</span>El plan por años</h3><p class="sub">Distribución anual de la inversión necesaria, según el reparto de cada línea.</p><div id="necAnos"></div></div>';
+    h += '<div class="card"><h3><span class="num">💰</span>Resumen del financiamiento necesario</h3><div id="necResumen"></div></div>';
+    h += '<div class="card"><h3><span class="num">🗣️</span>Presentar el plan al pueblo</h3>' +
+      '<p class="sub">Un informe con el mismo formato para cualquier municipio, en palabras sencillas que cualquier vecino entienda: las 5 necesidades más importantes, qué se va a hacer, cuánto cuesta y qué gana la gente con cada una.</p>' +
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="necInforme">🗣️ Hacer el informe para el pueblo</button>' +
+      '<button type="button" class="btn btn-ghost" id="necEstudio">📄 Estudio de factibilidad (formato oficial)</button></div>' +
+      '<p class="sub" style="margin-top:8px">El estudio oficial sigue el formato del estudio real de referencia (16 secciones, Decreto 174/2026, Art. 28): marca cada línea como inversión fija o capital de trabajo para que los totales salgan como en el modelo.</p></div>';
+
+    document.getElementById("formCtn").innerHTML = h;
+    cablear(); recalcular();
+  }
+
+  function cablear() {
+    var n = nec();
+    document.getElementById("necProv").addEventListener("change", function () { n.provincia = this.value; n.municipio = ""; guardar(); pintar(); });
+    document.getElementById("necMuni").addEventListener("change", function () { n.municipio = this.value; guardar(); });
+    document.getElementById("necTasa").addEventListener("input", function () { n.tasa = this.value; guardar(); recalcular(); });
+    document.querySelectorAll("#necTabla tbody tr").forEach(function (tr) {
+      var i = +tr.getAttribute("data-fila");
+      tr.querySelectorAll(".necIn").forEach(function (inp) {
+        inp.addEventListener("change", function () { inp.dispatchEvent(new Event("input", { bubbles: true })); });
+        inp.addEventListener("input", function () {
+          var c = inp.getAttribute("data-c");
+          if (c.indexOf("dist") === 0) n.filas[i].dist[+c.slice(4)] = inp.value;
+          else n.filas[i][c] = inp.value;
+          guardar(); recalcular();
+        });
+      });
+      tr.querySelector(".necDel").addEventListener("click", function () {
+        if (!confirm("¿Quitar esta línea del plan?")) return;
+        n.filas.splice(i, 1); guardar(); pintar();
+      });
+    });
+    var bInf = document.getElementById("necInforme");
+    if (bInf) bInf.addEventListener("click", pintarInforme);
+    var bEst = document.getElementById("necEstudio");
+    if (bEst) bEst.addEventListener("click", pintarEstudio);
+    var bEdm = document.getElementById("necEdm");
+    if (bEdm) bEdm.addEventListener("click", function () {
+      var n2 = nec(); var nuevas = 0;
+      LINEAS_EDM_CIENAGA.forEach(function (L) {
+        if (!n2.filas.some(function (f) { return f.linea === L[0]; })) {
+          n2.filas.push({ programa: "Producción de alimentos", linea: L[0], unidad: L[1], cantidad: L[2], costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
+          nuevas++;
+        }
+      });
+      guardar(); pintar();
+      toast(nuevas ? "🌱 " + nuevas + " líneas de la estrategia añadidas al plan" : "Esas líneas ya están en el plan");
+    });
+    var bBuscar = document.getElementById("necBuscar");
+    if (bBuscar) bBuscar.addEventListener("click", function () { buscarWeb(false); });
+    document.querySelectorAll(".necWebForce").forEach(function (b) {
+      b.addEventListener("click", function () { buscarWeb(true); });
+    });
+    document.querySelectorAll(".necWebAdd").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.getAttribute("data-i"); var w = (nec().web && nec().web.lista) || [];
+        if (!w[i]) return;
+        nec().filas.push({ programa: w[i].sector, linea: w[i].hallazgo.slice(0, 110), unidad: "", cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
+        guardar(); pintar(); toast("➕ Línea añadida al plan: " + w[i].sector);
+      });
+    });
+    document.getElementById("necAdd").addEventListener("click", function () {
+      n.filas.push({ programa: "", linea: "", unidad: "", cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
+      guardar(); pintar();
+    });
+    document.getElementById("necPrint").addEventListener("click", function () { window.print(); });
+    document.getElementById("necClear").addEventListener("click", function () {
+      if (!confirm("¿Vaciar todo el plan de necesidades?")) return;
+      data.necesidades = defecto(); guardar(); pintar();
+    });
+  }
+
+  var LINEAS_EDM_CIENAGA = [
+    ["Programa Del Patio al Plato — producción local 0 km (patios y organopónicos)", "patios / organopónicos", ""],
+    ["Mercados agroecológicos locales (meta 2026-2027)", "mercados", "5"],
+    ["Centros de procesamiento de alimentos", "centros", ""],
+    ["Programa de agroecología y agricultura sostenible", "programa", ""],
+    ["Programa Economía Social Solidaria «Viva mi Barrio»", "programa", ""],
+    ["PDL Finca Yatobá", "proyecto", ""],
+    ["PDL La Cantera", "proyecto", ""],
+    ["PDL Agro Vivo (en reformulación)", "proyecto", ""],
+    ["PDL Finca Morejón (en formulación)", "proyecto", ""],
+    ["PDL Finca Los Cocos (en formulación)", "proyecto", ""],
+    ["PDL Caminos al Vuelo (en formulación)", "proyecto", ""],
+    ["Proyecto de recuperación de suelos y manejo del agua (en formulación)", "proyecto", ""],
+    ["PDL Puerto Pesquero de interés local Caletón (en formulación)", "proyecto", ""]
+  ];
+  var URL_BUSCAR = "https://script.google.com/macros/s/AKfycbw02a9gP8DimXUlm9HP5Lg6ZAD3r_y-A8xSnGsSj6YN02WBzb59e4_Ocl2INDRIDcCu/exec?ruta=buscar";
+  var URL_KB = "https://script.google.com/macros/s/AKfycbzDmBLwgQj0Mx-YKryieWePKs7jFO29FX5D1Mn3KLj9ICnkSUsJwztwtNzUHj6e_5PJ6g/exec";
+  function kbRefs(municipio) {
+    return fetch(URL_KB + "?accion=refs&municipio=" + encodeURIComponent(municipio)).then(function (r) { return r.json(); })
+      .then(function (d) { return (d && d.refs) || []; }).catch(function () { return []; });
+  }
+  function kbPost(obj) {
+    return fetch(URL_KB, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(obj) }).then(function (r) { return r.text(); }).catch(function () { return null; });
+  }
+  function kbGuardarRefs(lista, n) {
+    if (!lista.length) return;
+    kbPost({ accion: "guardar_refs", refs: lista.map(function (w) { return { app: "FactiCuba-Datos", provincia: n.provincia, municipio: n.municipio, tema: w.sector, dato: w.hallazgo, fuente: w.fuente, url: w.url }; }) });
+  }
+  function kbGuardarEstudio(tipo) {
+    var n = nec(); if (!n) return;
+    var c = 0, u = 0;
+    (n.filas || []).forEach(function (f) { var q = num(f.cantidad); c += q * num(f.costoCUP); u += q * num(f.costoUSD); });
+    kbPost({ accion: "guardar_estudio", estudio: { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: n.provincia, municipio: n.municipio, proyecto: "Plan de inversiones 2027-2032 — " + (n.municipio || ""), resumen: tipo, total_cup: Math.round(c), total_usd: Math.round(u), nota: tipo } });
+  }
+  var SECTORES = [
+    ["Agua y saneamiento", /agua|acueducto|alcantarillado|saneamiento|potabilizadora|salidero/i],
+    ["Energía", /electric|apag[oó]n|alumbrado|energ[ií]a|paneles solares|termoel[eé]ctrica/i],
+    ["Vivienda", /vivienda|habitacional|derrumbe|albergue/i],
+    ["Vialidad y transporte", /vial|carretera|puente|transporte|[oó]mnibus|baches/i],
+    ["Salud", /salud|hospital|policl[ií]nico|consultorio|medicamento/i],
+    ["Educación", /escuela|c[ií]rculo infantil|educaci[oó]n|maestros/i],
+    ["Producción de alimentos", /alimento|agricultur|producci[oó]n|cultivo|ganader|abasto|vianda/i],
+    ["Turismo", /turismo|tur[ií]st|hotel|visitantes/i],
+    ["Industria y comercio local", /industria|comercio|minindustria|f[aá]brica|empleo/i],
+    ["Medio ambiente", /medio ambiente|contaminaci[oó]n|residuales|manglar|erosi[oó]n/i],
+    ["Comunicaciones", /internet|cobertura|telefon[ií]a|comunicaciones|etecsa/i]
+  ];
+  function htmlWeb(n) {
+    if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón: la página busca PRIMERO en la Base de Conocimiento y solo va a la web si allí no hay suficiente.</p>';
+    if (!n.web.lista.length) return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " para <b>" + esc(n.web.municipio) + '</b>: la web devolvió poca evidencia clara de necesidades. Prueba de nuevo o trabaja con el Plan EDM del territorio.</p>';
+    return (n.web.desdeBase ? '<p class="hint">📚 Estas necesidades salieron de la <b>Base de Conocimiento</b> (guardadas de búsquedas anteriores de las dos aplicaciones): no hizo falta buscar en la web. <button type="button" class="btn btn-ghost btn-sm necWebForce">🔄 Buscar de nuevo en la web</button></p>' : "") +
+      '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " · municipio: <b>" + esc(n.web.municipio) + "</b> · " + n.web.lista.length + ' necesidades — VERIFICAR antes de presentar:</p>' +
+      n.web.lista.map(function (w, i) {
+        return '<div style="border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:10px;margin-top:8px">' +
+          "<b>" + esc(w.sector) + ".</b> " + (w.origen === "base" ? '<span class="hint" style="color:#9fe8b1">📚 Base de conocimiento' + (w.fecha ? " · guardada el " + esc(w.fecha) : "") + "</span> " : "") + esc(w.hallazgo) +
+          '<div class="hint" style="margin-top:4px">Fuente: ' + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener" style="color:#8ec5ff">' + esc(w.fuente) + "</a>" : esc(w.fuente)) +
+          ' · <button type="button" class="btn btn-ghost btn-sm necWebAdd" data-i="' + i + '">➕ Añadir al plan</button></div></div>';
+      }).join("");
+  }
+  function buscarWeb(forzar) {
+    var n = nec();
+    if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
+    var caja = document.getElementById("necWeb");
+    var m = n.municipio, p = n.provincia;
+    function desdeLaBase() {
+      return kbRefs(m).then(function (refs) {
+        var vistos = {}, lista = [];
+        (refs || []).forEach(function (r) {
+          var frase = String(r.dato || "").trim();
+          if (!r.tema || frase.length < 10 || vistos[frase]) return;
+          vistos[frase] = 1;
+          lista.push({ sector: String(r.tema), hallazgo: frase, fuente: String(r.fuente || "Base de conocimiento"), url: String(r.url || ""), origen: "base", fecha: String(r.fecha || "").slice(0, 10) });
+        });
+        lista.sort(function (a, b) {
+          if (a.sector === "Producción de alimentos") return -1;
+          if (b.sector === "Producción de alimentos") return 1;
+          return 0;
+        });
+        return lista.slice(0, 8);
+      });
+    }
+    function enLaWeb(base) {
+      if (caja) caja.innerHTML = '<p class="hint">🔎 Buscando en la web las necesidades de ' + esc(m) + "… (puede tardar unos segundos)</p>";
+      var qs = [
+        "necesidades carencias déficit " + m + " " + p + " Cuba",
+        "problemas agua vivienda electricidad " + m + " Cuba",
+        "desarrollo local " + m + " necesidades inversión programas",
+        m + " " + p + " abasto viales transporte salud problemas población"
+      ];
+      function consultar(q) {
+        return fetch(URL_BUSCAR + "&q=" + encodeURIComponent(q)).then(function (r) { return r.json(); })
+          .then(function (d) { return (d && d.items) || []; }).catch(function () { return []; });
+      }
+      return Promise.all(qs.map(consultar)).then(function (listas) {
+        var items = [];
+        listas.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); });
+        if (items.length < 4) {
+          return Promise.all([consultar("necesidades déficit provincia " + p + " Cuba"), consultar("carencias servicios población " + p + " Cuba")])
+            .then(function (extra) { extra.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); }); return items; });
+        }
+        return items;
+      }).then(function (items) {
+        var porSector = {};
+        items.forEach(function (it) {
+          var texto = String(it.extracto || it.texto || it.titulo || "");
+          var frases = texto.split(/(?<=[.!?])\s+/);
+          SECTORES.forEach(function (sec) {
+            if (!sec[1].test(texto)) return;
+            var frase = frases.filter(function (f) { return sec[1].test(f) && /falta|d[eé]ficit|necesid|problem|deterior|escasez|carencia|insuficien|demanda|afectac/i.test(f); })[0] || frases.filter(function (f) { return sec[1].test(f); })[0] || texto.slice(0, 200);
+            frase = frase.trim().slice(0, 220);
+            if (frase.length < 25) return;
+            porSector[sec[0]] = porSector[sec[0]] || [];
+            if (!porSector[sec[0]].some(function (x) { return x.hallazgo === frase; }))
+              porSector[sec[0]].push({ sector: sec[0], hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "", origen: "web" });
+          });
+        });
+        var sectores = Object.keys(porSector).sort(function (a, b) {
+          if (a === "Producción de alimentos") return -1;
+          if (b === "Producción de alimentos") return 1;
+          return porSector[b].length - porSector[a].length;
+        });
+        var webLista = [];
+        sectores.forEach(function (sec) { if (porSector[sec][0]) webLista.push(porSector[sec][0]); });
+        sectores.forEach(function (sec) { for (var i = 1; i < porSector[sec].length && webLista.length < 8; i++) webLista.push(porSector[sec][i]); });
+        kbGuardarRefs(webLista, n);
+        var lista = base.slice();
+        webLista.forEach(function (w) { if (lista.length < 8 && !lista.some(function (x) { return x.hallazgo === w.hallazgo; })) lista.push(w); });
+        n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: lista, desdeBase: base.length > 0 && webLista.length === 0 };
+        guardar(); pintar();
+        toast(lista.length ? "🔎 " + lista.length + " necesidades para " + m + (base.length ? " (" + base.length + " de la base de conocimiento)" : "") + " — las nuevas quedaron guardadas en la base" : "🔎 Poca evidencia para " + m);
+      });
+    }
+    if (forzar) { enLaWeb([]); return; }
+    if (caja) caja.innerHTML = '<p class="hint">📚 Primero busco en la Base de Conocimiento lo ya guardado de ' + esc(m) + "…</p>";
+    desdeLaBase().then(function (base) {
+      if (base.length >= 5) {
+        n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: base, desdeBase: true };
+        guardar(); pintar();
+        toast("📚 " + base.length + " necesidades desde la Base de Conocimiento: no hizo falta buscar en la web");
+        return;
+      }
+      enLaWeb(base);
+    }).catch(function () { enLaWeb([]); });
+  }
+
+  var PUEBLO = {
+    "Producción de alimentos": {
+      hoy: "Hoy gran parte de la comida viene de fuera del municipio y llega cara o no llega.",
+      hacer: "Sembrar y criar más aquí mismo: patios, organopónicos, fincas, pesca y centros donde se elaboren los alimentos.",
+      gana: "Comida fresca cerca de casa y a mejor precio, menos colas y menos viajes a buscarla, y trabajo para la gente del campo y de la pesca."
+    },
+    "Agua y saneamiento": {
+      hoy: "Hoy el agua llega con problemas: se rompen las redes, hay salideros y en algunos lugares el abasto es irregular.",
+      hacer: "Reparar y ampliar las redes de agua y el alcantarillado, para que el agua llegue bien a cada casa.",
+      gana: "Agua limpia en la llave todos los días, menos enfermedades, y se acabó cargar cubos y esperar la pipa."
+    },
+    "Energía": {
+      hoy: "Hoy los apagones afectan la vida diaria y muchas calles quedan oscuras de noche.",
+      hacer: "Mejorar el servicio eléctrico y el alumbrado, aprovechando también el sol con paneles donde se pueda.",
+      gana: "Menos apagones, calles iluminadas y seguras de noche, y los equipos de la casa duran más."
+    },
+    "Vivienda": {
+      hoy: "Hoy muchas viviendas están deterioradas, con filtraciones y daños acumulados por años.",
+      hacer: "Construir viviendas nuevas y reparar las que están en mal estado, empezando por las familias que peor están.",
+      gana: "Casas seguras y sin filtraciones, donde las familias vivan con tranquilidad, sobre todo cuando viene un ciclón."
+    },
+    "Vialidad y transporte": {
+      hoy: "Hoy las carreteras y caminos están en mal estado y moverse dentro del municipio cuesta trabajo.",
+      hacer: "Reparar los viales y puentes principales y mejorar el transporte de la población.",
+      gana: "Llegar más rápido y seguro a todas partes, menos roturas de vehículos y los productos del campo llegan mejor a los mercados."
+    },
+    "Salud": {
+      hoy: "Hoy las instalaciones de salud necesitan reparaciones y falta equipamiento para atender bien a la población.",
+      hacer: "Reparar y equipar el policlínico, los consultorios y demás instalaciones de salud del municipio.",
+      gana: "Atención médica cerca de casa y en mejores condiciones, sin tener que viajar lejos por cada cosa."
+    },
+    "Educación": {
+      hoy: "Hoy las escuelas necesitan reparaciones y mejores condiciones para los niños y los maestros.",
+      hacer: "Reparar y equipar las escuelas y círculos infantiles del municipio.",
+      gana: "Escuelas bonitas y seguras donde los niños aprendan mejor y los maestros trabajen a gusto."
+    },
+    "Turismo": {
+      hoy: "Hoy el turismo puede dar mucho más: faltan instalaciones y servicios para aprovechar lo que el territorio tiene.",
+      hacer: "Mejorar las instalaciones y los servicios para los visitantes, cuidando la naturaleza que es la riqueza del lugar.",
+      gana: "Más trabajo e ingresos para las familias del municipio y dinero que se queda aquí para mejorar el pueblo."
+    },
+    "Industria y comercio local": {
+      hoy: "Hoy faltan producciones y servicios locales: muchas cosas hay que buscarlas fuera del municipio.",
+      hacer: "Crear y fortalecer minindustrias y servicios de la población, con lo que se produce aquí.",
+      gana: "Empleo en el propio municipio y productos hechos aquí, sin depender de que vengan de fuera."
+    },
+    "Medio ambiente": {
+      hoy: "Hoy hay problemas de contaminación y de cuidado de la naturaleza que afectan la salud y el futuro del territorio.",
+      hacer: "Limpiar y sanear el entorno, recoger bien los residuales y proteger los manglares, las playas y las áreas naturales.",
+      gana: "Un pueblo limpio y sano, naturaleza cuidada para los hijos y nietos, y un lugar más bonito para vivir y visitar."
+    },
+    "Comunicaciones": {
+      hoy: "Hoy la cobertura de teléfonos e internet es mala en varias zonas del municipio.",
+      hacer: "Ampliar la cobertura móvil e internet para llegar a todos los asentamientos.",
+      gana: "Estar comunicados con la familia, internet para estudiar y trabajar, y trámites sin tener que viajar."
+    }
+  };
+  function puebloDe(programa) {
+    var k = Object.keys(PUEBLO).filter(function (x) { return String(programa || "").indexOf(x) === 0; })[0];
+    return k ? PUEBLO[k] : { hoy: "Hoy esta necesidad afecta la vida diaria de la población.", hacer: "Trabajar en esta línea con los recursos del plan.", gana: "Mejoras concretas en la vida de los vecinos del municipio." };
+  }
+  function pintarInforme() {
+    var n = nec(); if (!n) return;
+    if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
+    var tasa = num(n.tasa);
+    var porProg = {};
+    n.filas.forEach(function (f) {
+      var c = num(f.cantidad); if (!c) return;
+      var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      var k = f.programa || "Otras necesidades";
+      porProg[k] = porProg[k] || { cup: 0, usd: 0, lineas: [] };
+      porProg[k].cup += tc; porProg[k].usd += tu;
+      if (f.linea) porProg[k].lineas.push(f.linea);
+    });
+    var conDinero = Object.keys(porProg).filter(function (k) { return porProg[k].cup > 0 || porProg[k].usd > 0; });
+    conDinero.sort(function (a, b) {
+      if (a === "Producción de alimentos") return -1;
+      if (b === "Producción de alimentos") return 1;
+      var ea = porProg[a].cup + porProg[a].usd * (tasa || 0), eb = porProg[b].cup + porProg[b].usd * (tasa || 0);
+      return eb - ea;
+    });
+    var elegidas = conDinero.slice(0, 5);
+    ((n.web && n.web.lista) || []).forEach(function (w) {
+      if (elegidas.length < 5 && elegidas.indexOf(w.sector) < 0) elegidas.push(w.sector);
+    });
+    Object.keys(PUEBLO).forEach(function (k) { if (elegidas.length < 5 && elegidas.indexOf(k) < 0) elegidas.push(k); });
+    elegidas = elegidas.slice(0, 5);
+
+    var totCUP = 0, totUSD = 0;
+    Object.keys(porProg).forEach(function (k) { totCUP += porProg[k].cup; totUSD += porProg[k].usd; });
+    var webDe = {};
+    ((n.web && n.web.lista) || []).forEach(function (w) { if (!webDe[w.sector]) webDe[w.sector] = w; });
+
+    var h = '<div class="card"><h3><span class="num">🗣️</span>Informe del plan para el pueblo</h3>' +
+      '<p class="sub">Plan de desarrollo de <b>' + esc(n.municipio) + "</b> (" + esc(n.provincia) + '), años 2027 a 2032. Escrito en palabras sencillas, para presentarlo a la población.</p></div>';
+    h += '<div class="card"><h3>¿De qué trata este plan?</h3><p style="line-height:1.65">Este es el plan de lo que nuestro municipio necesita construir y mejorar entre 2027 y 2032 para que la gente viva mejor. No es un papel guardado en una gaveta: es la lista de las cosas que más falta hacen, con lo que cuesta cada una y lo que gana cada familia cuando se hagan. De todas las necesidades, aquí se presentan las 5 más importantes, explicadas de forma sencilla.</p></div>';
+    elegidas.forEach(function (k, i) {
+      var P = puebloDe(k); var d = porProg[k];
+      var hacer = (d && d.lineas.length) ? d.lineas.slice(0, 3).join("; ") + "." : P.hacer;
+      var hoy = (webDe[k] && webDe[k].hallazgo) ? webDe[k].hallazgo : P.hoy;
+      h += '<div class="card"><h3>' + (i + 1) + ". " + esc(k) + "</h3>" +
+        '<p style="line-height:1.65"><b>Cómo estamos hoy:</b> ' + esc(hoy) + "</p>" +
+        '<p style="line-height:1.65"><b>Qué se va a hacer:</b> ' + esc(hacer) + "</p>" +
+        '<p style="line-height:1.65"><b>Cuánto cuesta:</b> ' + (d ? ("<b>" + fmt(d.cup) + " pesos (CUP)</b> y <b>" + fmt(d.usd) + " dólares (USD)</b>, repartidos entre 2027 y 2032.") : "el costo todavía se está calculando con presupuestos y cotizaciones; no se pone un número inventado.") + "</p>" +
+        '<p style="line-height:1.65"><b>Qué gana la gente:</b> ' + esc(P.gana) + "</p></div>";
+    });
+    h += '<div class="card"><h3>El dinero del plan, en resumen</h3>' +
+      '<p style="line-height:1.65">En total, el municipio necesita invertir <b>' + fmt(totCUP) + " pesos (CUP)</b> y <b>" + fmt(totUSD) + " dólares (USD)</b> en estos seis años. El dinero se reparte por años para ir haciendo las obras poco a poco, empezando por lo que más falta hace — y la primera prioridad es la producción de alimentos.</p>" +
+      '<p style="line-height:1.65"><b>¿Y cómo se controla?</b> Cada obra se sigue paso a paso: el gobierno municipal y las organizaciones del territorio revisan los avances y la población puede preguntar en cualquier momento en qué va cada cosa. Lo que aquí se promete, se cumple o se explica.</p></div>';
+    h += '<div class="btn-row"><button type="button" class="btn btn-primary" id="necInfPrint">🖨 Imprimir el informe</button>' +
+      '<button type="button" class="btn btn-ghost" id="necInfVolver">← Volver al plan</button></div>';
+    document.getElementById("formCtn").innerHTML = h;
+    document.getElementById("necInfVolver").addEventListener("click", pintar);
+    document.getElementById("necInfPrint").addEventListener("click", function () { window.print(); });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function pintarEstudio() {
+    var n = nec(); if (!n) return;
+    if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
+    var tasa = num(n.tasa);
+    var cap = { cup: 0, usd: 0 }, ope = { cup: 0, usd: 0 };
+    var porProg = {}, cartera = {};
+    n.filas.forEach(function (f) {
+      var c = num(f.cantidad); var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      var destino = (f.tipo === "OPEX") ? ope : cap;
+      destino.cup += tc; destino.usd += tu;
+      var k = f.programa || "Otras necesidades";
+      porProg[k] = porProg[k] || { cup: 0, usd: 0 };
+      porProg[k].cup += tc; porProg[k].usd += tu;
+      cartera[k] = cartera[k] || []; if (f.linea) cartera[k].push(f);
+    });
+    var sub = cap.cup + ope.cup, subU = cap.usd + ope.usd;
+    var cont = sub * 0.10, contU = subU * 0.10;
+    var tot = sub + cont, totU = subU + contU;
+    var porAno = ANOS.map(function () { return { cup: 0, usd: 0 }; });
+    n.filas.forEach(function (f) {
+      var c = num(f.cantidad), tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      ANOS.forEach(function (a, j) { var p = num(f.dist[j]) / 100; porAno[j].cup += tc * p; porAno[j].usd += tu * p; });
+    });
+    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
+    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
+    var deficit = data.plan ? (data.plan.deficit || "") : "";
+    var neces = data.plan ? (data.plan.necesidades || "") : "";
+    var fecha = new Date().toLocaleDateString("es-CU", { month: "long", year: "numeric" });
+    var hayAlimentos = Object.keys(porProg).some(function (k) { return k.indexOf("Producción de alimentos") === 0; });
+    var eqU = tasa ? fmt(Math.round(tot / tasa)) : "—";
+    function tabla(filas, cols) {
+      return '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>' + cols.map(function (c) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + c + "</th>"; }).join("") + "</tr></thead><tbody>" + filas + "</tbody></table>";
+    }
+    function sec(t, cuerpo) { return '<div class="card"><h3>' + t + "</h3>" + cuerpo + "</div>"; }
+    function p(t) { return '<p style="line-height:1.65">' + t + "</p>"; }
+
+    var h = '<div class="card" style="text-align:center"><p style="letter-spacing:2px">REPÚBLICA DE CUBA</p>' +
+      "<h3>PROVINCIA " + esc(n.provincia.toUpperCase()) + "<br>MUNICIPIO " + esc(n.municipio.toUpperCase()) + "</h3>" +
+      "<h3>ESTUDIO DE FACTIBILIDAD ECONÓMICA</h3>" +
+      p("Plan de inversiones para el desarrollo del municipio, 2027-2032") +
+      p("Conforme a lo establecido en el Decreto 174/2026 «Para la Gestión Estratégica del Desarrollo Territorial»") +
+      p(esc(fecha) + (tasa ? " · Tipo de cambio de referencia: " + fmt2(tasa) + " CUP/USD" : "")) + "</div>";
+
+    h += sec("1. Resumen Ejecutivo",
+      p("El presente estudio determina los montos totales de financiamiento requeridos para atender las necesidades de inversión del municipio <b>" + esc(n.municipio) + "</b> (" + esc(n.provincia) + ") en el horizonte 2027-2032" + (pob ? ", con una población de referencia de " + fmt(pob) + " habitantes" + (hog ? " y " + fmt(hog) + " hogares" : "") + " según los datos ONEI capturados" : "") + ".") +
+      p("El financiamiento total requerido asciende a <b>" + fmt(tot) + " CUP</b> y <b>" + fmt(totU) + " USD</b>" + (tasa ? " (la parte en CUP equivale aproximadamente a " + eqU + " USD al tipo de cambio puesto)" : "") + ", de los cuales el " + (sub ? Math.round(cap.cup / (sub || 1) * 100) : 0) + " % corresponde a inversión fija y el resto a capital de trabajo, más un 10 % de contingencia. La primera prioridad del plan es la producción de alimentos.") +
+      p("El estudio se estructura según los requisitos del Artículo 28 del Decreto 174/2026: niveles de actividad, costos de producción, costos de inversión, capital de trabajo, demanda energética y flujo de financiamiento por años."));
+
+    h += sec("2. Marco Jurídico y de Política",
+      p("• Constitución de la República (2019).<br>• Decreto 174/2026 «Para la Gestión Estratégica del Desarrollo Territorial» y normas complementarias (Resoluciones 70/2026 del MEP, 202/2026 del MFP y 118/2026 del BCC)." + (hayAlimentos ? "<br>• Ley 148/2022 de Soberanía Alimentaria y Seguridad Alimentaria y Nutricional.<br>• Política Local de Soberanía Alimentaria y Producción Sostenible de Alimentos del municipio (Línea 1)." : "") + "<br>• Estrategia de Desarrollo Municipal y su cartera de programas y proyectos."));
+
+    h += sec("3. Diagnóstico de Partida y Estimación de Demanda",
+      (deficit ? p("<b>Déficit declarado en el Plan de Desarrollo (EDM):</b> " + esc(deficit)) : "") +
+      (neces ? p("<b>Necesidades de la población sin cubrir (EDM):</b> " + esc(neces)) : "") +
+      ((n.web && n.web.lista && n.web.lista.length) ? p("<b>Evidencia web de carencias del territorio (verificar):</b><br>" + n.web.lista.map(function (w) { return "• " + esc(w.sector) + ": " + esc(w.hallazgo); }).join("<br>")) : "") +
+      p("La demanda se dimensiona a partir de la población y los hogares del municipio y de los déficits declarados en su Estrategia de Desarrollo; las metas físicas de cada programa constan en la sección 9."));
+
+    h += sec("4. Precios Actuales de Referencia",
+      p("Los costos unitarios de este estudio son los adoptados en el propio plan (del plan municipal, de presupuestos o de cotizaciones), en CUP y en USD por línea." + (tasa ? " Tipo de cambio de referencia puesto por el usuario: <b>" + fmt2(tasa) + " CUP/USD</b>." : " No se fijó tipo de cambio: las equivalencias totales se presentan en cuanto se ponga la tasa en la pestaña.") + " Los precios se usan como referencia de valor de la inversión y de la producción local (ahorro y sustitución de importaciones)."));
+
+    var filasCartera = Object.keys(cartera).map(function (k) {
+      return "<tr><td style='padding:6px'><b>" + esc(k) + "</b></td><td style='padding:6px'>" + cartera[k].map(function (f) { return esc(f.linea); }).join("<br>") + "</td></tr>";
+    }).join("");
+    h += sec("5. Cartera de Programas y Proyectos", tabla(filasCartera, ["Programa", "Líneas y proyectos"]));
+
+    function filasTipo(tipo) {
+      return n.filas.filter(function (f) { return ((f.tipo === "OPEX") ? "OPEX" : "CAPEX") === tipo && num(f.cantidad) > 0; })
+        .map(function (f) {
+          return "<tr><td style='padding:6px'>" + esc(f.linea || f.programa) + "</td><td style='padding:6px'>" + fmt(num(f.cantidad)) + " " + esc(f.unidad) + "</td><td style='padding:6px'>" + fmt(num(f.costoCUP)) + " / " + fmt(num(f.costoUSD)) + "</td><td style='padding:6px'>" + fmt(num(f.cantidad) * num(f.costoCUP)) + " CUP · " + fmt(num(f.cantidad) * num(f.costoUSD)) + " USD</td></tr>";
+        }).join("");
+    }
+    h += sec("6. Costos de Inversión (CAPEX) — Inversión fija",
+      tabla(filasTipo("CAPEX"), ["Concepto", "Cantidad / escala", "Costo unitario CUP / USD", "Total"]) +
+      p("<b>Total inversión fija: " + fmt(cap.cup) + " CUP · " + fmt(cap.usd) + " USD.</b>"));
+    h += sec("7. Capital de Trabajo e Insumos de Arranque (OPEX inicial)",
+      tabla(filasTipo("OPEX"), ["Rubro", "Cantidad / escala", "Costo unitario CUP / USD", "Total"]) +
+      p("<b>Total capital de trabajo: " + fmt(ope.cup) + " CUP · " + fmt(ope.usd) + " USD</b>, dimensionado para cubrir el primer ciclo completo de operación hasta que los flujos se estabilicen."));
+
+    var filasAnos = ANOS.map(function (a, j) { return "<tr><td style='padding:6px'><b>" + a + "</b></td><td style='padding:6px'>" + fmt(porAno[j].cup) + "</td><td style='padding:6px'>" + fmt(porAno[j].usd) + "</td></tr>"; }).join("");
+    h += sec("8. Monto Total de Financiamiento Requerido",
+      tabla(
+        "<tr><td style='padding:6px'>Inversión fija (CAPEX)</td><td style='padding:6px'>" + fmt(cap.cup) + "</td><td style='padding:6px'>" + fmt(cap.usd) + "</td></tr>" +
+        "<tr><td style='padding:6px'>Capital de trabajo (OPEX)</td><td style='padding:6px'>" + fmt(ope.cup) + "</td><td style='padding:6px'>" + fmt(ope.usd) + "</td></tr>" +
+        "<tr><td style='padding:6px'>Contingencia y ajuste (10 %)</td><td style='padding:6px'>" + fmt(cont) + "</td><td style='padding:6px'>" + fmt(contU) + "</td></tr>" +
+        "<tr><td style='padding:6px'><b>MONTO TOTAL</b></td><td style='padding:6px'><b>" + fmt(tot) + " CUP</b></td><td style='padding:6px'><b>" + fmt(totU) + " USD</b></td></tr>",
+        ["Concepto", "CUP", "USD"]) +
+      p("<b>Distribución por años</b> (según el reparto de cada línea):") + tabla(filasAnos, ["Año", "CUP", "USD"]));
+
+    var metas = Object.keys(cartera).map(function (k) {
+      var cant = {};
+      cartera[k].forEach(function (f) { if (num(f.cantidad)) { var u = f.unidad || "unidades"; cant[u] = (cant[u] || 0) + num(f.cantidad); } });
+      var txt = Object.keys(cant).map(function (u) { return fmt(cant[u]) + " " + u; }).join(" · ");
+      return "<tr><td style='padding:6px'>" + esc(k) + "</td><td style='padding:6px'>" + (txt || "—") + "</td></tr>";
+    }).join("");
+    h += sec("9. Niveles de Actividad", p("Metas físicas del plan por programa (suma de las cantidades de sus líneas):") + tabla(metas, ["Programa", "Meta física 2027-2032"]));
+
+    h += sec("10. Costos de Producción Anuales (régimen)",
+      p("Los costos anuales de operación en régimen se determinan en los presupuestos de cada proyecto de la cartera; el capital de trabajo de la sección 7 cubre el arranque. El valor de la producción local a precios de mercado — con el ahorro logístico de producir en el propio territorio (0 km) — constituye el principal beneficio económico-social del plan, junto a la sustitución de importaciones."));
+    h += sec("11. Demanda Energética y Fuentes Renovables",
+      p("Se prioriza la energía solar fotovoltaica para riego, frío, procesamiento, alumbrado y bombeo de agua, por la situación energética nacional; su costo se incluye dentro de los rubros de inversión de cada programa. Toda línea nueva debe valorar su variante renovable antes de depender de combustible fósil."));
+    h += sec("12. Flujo y Análisis de Viabilidad",
+      p("Indicadores de factibilidad (Artículo 28 del Decreto 174/2026):<br>• Niveles de actividad: alcanzables con la escala de inversión propuesta (sección 9).<br>• Costos de inversión: cuantificados y distribuidos por años (secciones 6 y 8).<br>• Capital de trabajo: dimensionado para el primer ciclo completo (sección 7).<br>• Demanda energética: cubierta prioritariamente con renovables (sección 11).<br>• Flujo de financiamiento: distribuido 2027-2032 según el reparto de cada línea (sección 8), comenzando por la producción de alimentos. La viabilidad definitiva de cada proyecto se confirma con su propio estudio al formularse."));
+    h += sec("13. Fuentes de Financiamiento Recomendadas",
+      p("Conforme al Decreto 174/2026 y normas complementarias:<br>a) Fondo de Desarrollo Local municipal y provincial.<br>b) Presupuesto del Estado (asignaciones sectoriales).<br>c) Créditos bancarios blandos a proyectos de desarrollo local (BCC / bancos comerciales) y Fondo de Fideicomiso para PDL.<br>d) Cooperación internacional y proyectos de agencias (FAO, PNUD, cooperación bilateral).<br>e) Aportes de empresas estatales y no estatales del territorio en esquemas de encadenamiento.<br>f) Recursos propios generados por los propios proyectos a partir de su entrada en operación."));
+    var impactos = Object.keys(porProg).map(function (k) { return "• " + esc(k) + ": " + esc(puebloDe(k).gana); }).join("<br>");
+    h += sec("14. Impactos Esperados", p(impactos));
+    h += sec("15. Principales Riesgos y Medidas de Mitigación",
+      p("• Inflación de insumos y escasez de materiales → priorizar producción local de insumos (semillas, compost, bioinsumos) y contratos marco con proveedores.<br>• Limitaciones energéticas → maximizar la energía solar fotovoltaica desde el diseño.<br>• Eventos climáticos extremos → diversificación, variedades resistentes, obras de drenaje y manejo hídrico.<br>• Rotación de la fuerza de trabajo → incentivos económicos, formación de jóvenes y vinculación de los proyectos con la economía local."));
+    h += sec("16. Conclusiones y Recomendación",
+      p("El estudio determina que el monto total de financiamiento necesario para atender las necesidades de inversión del municipio <b>" + esc(n.municipio) + "</b> en 2027-2032 es de <b>" + fmt(tot) + " CUP</b> y <b>" + fmt(totU) + " USD</b>, distribuidos en inversión fija, capital de trabajo y contingencia.") +
+      p("La inversión es factible técnica, económica y socialmente en la medida en que cada proyecto de la cartera complete su formulación. Se recomienda aprobar el monto y el cronograma por fases, constituir la comisión municipal de seguimiento como instancia de control, e iniciar de inmediato los componentes de corto plazo, con la producción de alimentos como primera prioridad.") +
+      p("Documento elaborado conforme a los requisitos de factibilidad económica del Artículo 28 del Decreto 174/2026. Cifras tomadas del plan de necesidades del municipio; lo no cuantificado queda declarado, no inventado."));
+
+    h += '<div class="btn-row"><button type="button" class="btn btn-primary" id="necEstPrint">🖨 Imprimir el estudio</button>' +
+      '<button type="button" class="btn btn-ghost" id="necEstVolver">← Volver al plan</button></div>';
+    document.getElementById("formCtn").innerHTML = h;
+    document.getElementById("necEstVolver").addEventListener("click", pintar);
+    document.getElementById("necEstPrint").addEventListener("click", function () { window.print(); });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  var _pintarEstudioKB = pintarEstudio;
+  pintarEstudio = function () { _pintarEstudioKB(); try { kbGuardarEstudio("Estudio de factibilidad (formato oficial) del plan de inversiones"); } catch (e) {} };
+  var _pintarInformeKB = pintarInforme;
+  pintarInforme = function () { _pintarInformeKB(); try { kbGuardarEstudio("Informe para el pueblo del plan de inversiones"); } catch (e) {} };
+  function recalcular() {
+    var n = nec(); if (!n) return;
+    var totCUP = 0, totUSD = 0;
+    var porAno = ANOS.map(function () { return { cup: 0, usd: 0 }; });
+    var porProg = {};
+    document.querySelectorAll("#necTabla tbody tr").forEach(function (tr) {
+      var i = +tr.getAttribute("data-fila"); var f = n.filas[i];
+      var c = num(f.cantidad), tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      tr.querySelector(".necTotCUP").textContent = fmt(tc);
+      tr.querySelector(".necTotUSD").textContent = fmt(tu);
+      totCUP += tc; totUSD += tu;
+      var clave = f.programa || "(sin programa)";
+      porProg[clave] = porProg[clave] || { cup: 0, usd: 0 };
+      porProg[clave].cup += tc; porProg[clave].usd += tu;
+      ANOS.forEach(function (a, j) { var p = num(f.dist[j]) / 100; porAno[j].cup += tc * p; porAno[j].usd += tu * p; });
+    });
+    var anos = document.getElementById("necAnos");
+    if (anos) {
+      anos.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>' +
+        ["Año", "Inversión en CUP", "Inversión en USD"].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") + "</tr></thead><tbody>" +
+        ANOS.map(function (a, j) { return "<tr><td style='padding:6px'><b>" + a + "</b></td><td style='padding:6px'>" + fmt(porAno[j].cup) + "</td><td style='padding:6px'>" + fmt(porAno[j].usd) + "</td></tr>"; }).join("") +
+        "<tr><td style='padding:6px'><b>TOTAL 2027-2032</b></td><td style='padding:6px'><b>" + fmt(totCUP) + "</b></td><td style='padding:6px'><b>" + fmt(totUSD) + "</b></td></tr></tbody></table>";
+    }
+    var res = document.getElementById("necResumen");
+    if (res) {
+      var tasa = num(n.tasa);
+      var filas = Object.keys(porProg).map(function (p) {
+        return "<tr><td style='padding:6px'>" + esc(p) + "</td><td style='padding:6px'>" + fmt(porProg[p].cup) + "</td><td style='padding:6px'>" + fmt(porProg[p].usd) + "</td></tr>";
+      }).join("");
+      res.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>' +
+        ["Programa", "CUP", "USD"].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") + "</tr></thead><tbody>" + filas +
+        "<tr><td style='padding:6px'><b>Necesidad total del municipio</b></td><td style='padding:6px'><b>" + fmt(totCUP) + " CUP</b></td><td style='padding:6px'><b>" + fmt(totUSD) + " USD</b></td></tr></tbody></table>" +
+        (tasa ? '<p class="hint" style="margin-top:8px">Equivalencia a la tasa puesta (' + fmt2(tasa) + " CUP/USD): la parte en USD equivale a <b>" + fmt(totUSD * tasa) + " CUP</b>; necesidad total equivalente ≈ <b>" + fmt(totCUP + totUSD * tasa) + " CUP</b>.</p>" : '<p class="hint" style="margin-top:8px">Pon la tasa de cambio arriba para ver la equivalencia total en CUP.</p>') +
+        '<p class="hint">Las cantidades y los costos unitarios salen del plan municipal, de presupuestos o de cotizaciones: esta pestaña modela en vivo con los datos que se escriban; no inventa cifras.</p>';
+    }
+  }
+})();
+</script>

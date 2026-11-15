@@ -1,0 +1,99 @@
+<script>
+/* ============ fcNube: conexión con la base «FactiCuba-Datos DB» (Google Sheets) ============
+   - Indicador de conexión (verde/rojo) comprobado contra el servidor real al cargar.
+   - Respaldo automático: cada cambio local se sube a la base (una fila por usuario).
+   - Botón «Restaurar de la nube»: trae la copia de la base y recarga la página.
+   No toca el autoguardado local: si no hay internet, la app sigue como siempre. */
+(function () {
+  var URL_SERVIDOR = "__URL_SERVIDOR__";
+  var ultimoHash = null, temporizador = null, subiendo = false;
+
+  var css = document.createElement("style");
+  css.textContent =
+    "#fcNube{position:fixed;right:12px;bottom:12px;z-index:9999;display:flex;align-items:center;gap:8px;" +
+    "background:rgba(10,18,38,.82);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:7px 12px;" +
+    "color:#eaf2ff;font:600 12px/1.2 system-ui,sans-serif;backdrop-filter:blur(8px);box-shadow:0 4px 18px rgba(0,0,0,.35)}" +
+    "#fcNube .punto{width:11px;height:11px;border-radius:50%;background:#f5c542;flex:none}" +
+    "#fcNube.ok .punto{background:#2ee66b;box-shadow:0 0 8px #2ee66b}" +
+    "#fcNube.mal .punto{background:#ff5252;box-shadow:0 0 8px #ff5252}" +
+    "#fcNube button{background:rgba(255,255,255,.12);color:#eaf2ff;border:1px solid rgba(255,255,255,.3);" +
+    "border-radius:999px;padding:4px 10px;font:600 11px system-ui;cursor:pointer}" +
+    "#fcNube button:hover{background:rgba(255,255,255,.25)}";
+  document.head.appendChild(css);
+
+  var caja = document.createElement("div");
+  caja.id = "fcNube";
+  caja.innerHTML = '<span class="punto"></span><span id="fcNubeTxt">Base de datos: comprobando…</span>' +
+    '<button id="fcNubeBtn" type="button">Restaurar de la nube</button>';
+  document.body.appendChild(caja);
+  var txt = caja.querySelector("#fcNubeTxt");
+
+  function poner(estado, texto) { caja.className = estado; txt.textContent = texto; }
+  function conTimeout(ms) { var c = new AbortController(); setTimeout(function () { c.abort(); }, ms); return c.signal; }
+
+  function ping() {
+    return fetch(URL_SERVIDOR + "?accion=ping", { signal: conTimeout(12000) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j || !j.ok) throw 0; poner("ok", "Base de datos: conectada"); return true; })
+      .catch(function () { poner("mal", "Base de datos: sin conexión"); return false; });
+  }
+
+  function hashLocal() {
+    try {
+      var raw = localStorage.getItem("facticuba_data_" + currentUser) || "";
+      var h = 0; for (var i = 0; i < raw.length; i++) { h = (h * 31 + raw.charCodeAt(i)) | 0; }
+      return h + ":" + raw.length;
+    } catch (e) { return null; }
+  }
+
+  function subir() {
+    if (subiendo || typeof currentUser === "undefined" || !currentUser) return;
+    subiendo = true;
+    fetch(URL_SERVIDOR, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ accion: "guardar", usuario: currentUser, datos: data }),
+      signal: conTimeout(30000)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) { ultimoHash = hashLocal(); poner("ok", "Base de datos: conectada · guardado " + new Date().toLocaleTimeString("es-CU", { hour: "2-digit", minute: "2-digit" })); }
+        else poner("mal", "Base de datos: error al guardar");
+      })
+      .catch(function () { poner("mal", "Base de datos: sin conexión"); })
+      .then(function () { subiendo = false; });
+  }
+
+  function vigilar() {
+    if (typeof currentUser === "undefined" || !currentUser) return;
+    var h = hashLocal();
+    if (h === null) return;
+    if (ultimoHash === null) { ultimoHash = h; return; }
+    if (h !== ultimoHash) {
+      clearTimeout(temporizador);
+      temporizador = setTimeout(subir, 2500);
+    }
+  }
+
+  caja.querySelector("#fcNubeBtn").addEventListener("click", function () {
+    if (typeof currentUser === "undefined" || !currentUser) { alert("Primero inicia sesión."); return; }
+    if (!confirm("Se traerá la copia guardada en la base de datos y se reemplazará lo que hay en este navegador. ¿Seguir?")) return;
+    poner("", "Base de datos: trayendo copia…");
+    fetch(URL_SERVIDOR + "?accion=cargar&usuario=" + encodeURIComponent(currentUser), { signal: conTimeout(20000) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) throw 0;
+        var d = j.datos || {};
+        var vacio = !Object.keys(d.proyecto || {}).length && !Object.keys(d.plan || {}).length && !Object.keys(d.onei || {}).length;
+        if (vacio) { poner("ok", "Base de datos: conectada"); alert("La base no tiene datos guardados para este usuario."); return; }
+        localStorage.setItem("facticuba_data_" + currentUser, JSON.stringify({ proyecto: d.proyecto || {}, plan: d.plan || {}, onei: d.onei || {} }));
+        location.reload();
+      })
+      .catch(function () { poner("mal", "Base de datos: sin conexión"); alert("No se pudo traer la copia. Revisa la conexión."); });
+  });
+
+  ping();
+  setInterval(function () { vigilar(); }, 4000);
+  setInterval(function () { if (!subiendo) ping(); }, 120000);
+})();
+</script>

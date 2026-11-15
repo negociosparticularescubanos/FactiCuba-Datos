@@ -1,0 +1,152 @@
+<script>
+/* ============ fcEstrategia: «Estrategia Viva» — portada del municipio ============
+   La página como Estrategia de Desarrollo Municipal VIVA: al introducir los datos
+   de los indicadores, las cifras se actualizan solas (avance %, totales, tarjetas).
+   - Tarjetas vivas desde las plantillas (ONEI) y el plan de necesidades.
+   - Indicadores de la EDM editables: línea base, meta, valor actual → avance %.
+   - Alimentos primero, como manda la prioridad fijada por Leonardo. */
+(function () {
+  var activo = false;
+
+  var SEMILLA = [
+    ["Autoabastecimiento de alimentos básicos", "%", "", "80", "", "2030"],
+    ["Cobertura local de hortalizas, frutas y viandas", "%", "", "60", "", "2029"],
+    ["Aumento de producción en patios y organopónicos", "%", "", "20", "", "2027"],
+    ["Mercados agroecológicos locales en funcionamiento", "mercados", "", "5", "", "2027"],
+    ["Población con abasto de agua regular", "%", "", "100", "", "2030"],
+    ["Viviendas construidas o reparadas", "viviendas", "", "", "", "2030"],
+    ["Empleos creados por los proyectos del plan", "empleos", "", "", "", "2030"]
+  ];
+  function defecto() {
+    return { indicadores: SEMILLA.map(function (x) { return { nombre: x[0], unidad: x[1], base: x[2], meta: x[3], actual: x[4], ano: x[5] }; }) };
+  }
+  function est() {
+    if (typeof data === "undefined") return null;
+    if (!data.estrategia) data.estrategia = defecto();
+    if (!Array.isArray(data.estrategia.indicadores)) data.estrategia.indicadores = defecto().indicadores;
+    return data.estrategia;
+  }
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; }
+  function hay(v) { return v !== "" && v != null && !isNaN(parseFloat(v)); }
+  function fmt(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 0 }) : "—"; }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+  function guardar() { if (typeof persist === "function") persist(); }
+  function primerNumero(texto) {
+    var grupos = String(texto || "").match(/\d[\d. ]*\d|\d/g) || [];
+    var mayor = 0;
+    grupos.forEach(function (g) { var v = parseInt(g.replace(/[^\d]/g, ""), 10); if (v > mayor) mayor = v; });
+    return mayor;
+  }
+  function avance(ind) {
+    if (!hay(ind.actual) || !hay(ind.meta)) return null;
+    var b = hay(ind.base) ? num(ind.base) : 0, m = num(ind.meta), a = num(ind.actual);
+    if (m === b) return null;
+    return Math.max(0, Math.min(100, Math.round((a - b) / (m - b) * 100)));
+  }
+
+  /* ---------- botón de pestaña: la primera (portada del municipio) ---------- */
+  var primerBtn = document.querySelector(".tab");
+  if (!primerBtn) return;
+  var btn = document.createElement("button");
+  btn.className = "tab"; btn.type = "button"; btn.id = "tabEstrategia";
+  btn.innerHTML = "<b>🏛️ Estrategia Viva</b><span>la EDM del municipio, actualizada sola</span>";
+  primerBtn.parentNode.insertBefore(btn, primerBtn);
+  btn.addEventListener("click", function () {
+    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    activo = true; pintar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.querySelectorAll(".tab").forEach(function (b) {
+    if (b !== btn) b.addEventListener("click", function () { activo = false; btn.classList.remove("active"); });
+  });
+  var btnVaciar = document.getElementById("clearBtn");
+  if (btnVaciar) btnVaciar.addEventListener("click", function (e) {
+    if (activo) { e.stopImmediatePropagation(); toast("Estás en Estrategia Viva: edita los indicadores en su tabla."); }
+  }, true);
+
+  /* ---------- cifras vivas desde el resto de la página ---------- */
+  function cifras() {
+    var muni = (data.plan && data.plan.municipio) || (data.proyecto && data.proyecto.municipio) || (data.necesidades && data.necesidades.municipio) || "";
+    var prov = (data.plan && data.plan.provincia) || (data.proyecto && data.proyecto.provincia) || (data.necesidades && data.necesidades.provincia) || "";
+    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
+    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
+    var totCUP = 0, totUSD = 0, alimCUP = 0, alimUSD = 0, lineas = 0;
+    if (data.necesidades && Array.isArray(data.necesidades.filas)) {
+      data.necesidades.filas.forEach(function (f) {
+        var c = num(f.cantidad); if (!c) return;
+        var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+        totCUP += tc; totUSD += tu; lineas++;
+        if (String(f.programa || "").indexOf("Producción de alimentos") === 0) { alimCUP += tc; alimUSD += tu; }
+      });
+    }
+    var halladas = (data.necesidades && data.necesidades.web && data.necesidades.web.lista) ? data.necesidades.web.lista.length : 0;
+    return { muni: muni, prov: prov, pob: pob, hog: hog, totCUP: totCUP, totUSD: totUSD, alimCUP: alimCUP, alimUSD: alimUSD, lineas: lineas, halladas: halladas };
+  }
+
+  function pintar() {
+    var e = est(); if (!e) return;
+    var c = cifras();
+    var tarjeta = function (titulo, valor, nota) {
+      return '<div style="flex:1 1 150px;border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:12px;min-width:140px"><div class="hint">' + titulo + '</div><div style="font-size:20px;font-weight:800;margin:4px 0">' + valor + '</div><div class="hint">' + nota + "</div></div>";
+    };
+    var h = '<div class="card"><h3><span class="num">🏛️</span>Estrategia de Desarrollo Municipal — ' + (c.muni ? esc(c.muni) : "tu municipio") + (c.prov ? " (" + esc(c.prov) + ")" : "") + "</h3>" +
+      '<p class="sub">Esta página ES la estrategia viva del municipio: cada dato que escribas en las plantillas, en el plan de necesidades o en los indicadores actualiza las cifras de aquí y de los informes, sin volver a teclear nada.</p>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">' +
+      tarjeta("Población (ONEI)", fmt(c.pob), c.hog ? fmt(c.hog) + " hogares" : "completa la plantilla ONEI") +
+      tarjeta("Inversión del plan 2027-2032", fmt(c.totCUP) + " CUP", fmt(c.totUSD) + " USD · " + c.lineas + " líneas con cantidad") +
+      tarjeta("⭐ Alimentos primero", fmt(c.alimCUP) + " CUP", fmt(c.alimUSD) + " USD del plan") +
+      tarjeta("Necesidades halladas en la web", c.halladas ? String(c.halladas) : "—", "pestaña Necesidades") +
+      "</div></div>";
+
+    h += '<div class="card"><h3><span class="num">📈</span>Indicadores de la estrategia</h3>' +
+      '<p class="sub">Escribe el valor actual de cada indicador y el avance hacia la meta se calcula solo. Las metas sembradas son las de la Línea 1 de alimentos y las básicas de todo municipio: ajústalas a tu territorio.</p>' +
+      '<div style="overflow-x:auto"><table id="estTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px"><thead><tr>' +
+      ["Indicador", "Unidad", "Línea base", "Meta", "Año meta", "Valor actual", "Avance", ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
+      "</tr></thead><tbody>";
+    e.indicadores.forEach(function (ind, i) {
+      var av = avance(ind);
+      h += '<tr data-ind="' + i + '">' +
+        '<td><input class="inp estIn" data-c="nombre" value="' + esc(ind.nombre) + '"></td>' +
+        '<td><input class="inp estIn" data-c="unidad" value="' + esc(ind.unidad) + '" style="max-width:90px"></td>' +
+        '<td><input class="inp estIn" data-c="base" type="number" step="any" value="' + esc(ind.base) + '" style="max-width:80px"></td>' +
+        '<td><input class="inp estIn" data-c="meta" type="number" step="any" value="' + esc(ind.meta) + '" style="max-width:80px"></td>' +
+        '<td><input class="inp estIn" data-c="ano" value="' + esc(ind.ano) + '" style="max-width:70px"></td>' +
+        '<td><input class="inp estIn" data-c="actual" type="number" step="any" value="' + esc(ind.actual) + '" style="max-width:90px"></td>' +
+        '<td style="min-width:130px"><div style="background:rgba(255,255,255,.12);border-radius:99px;height:12px;overflow:hidden"><div class="estBar" style="height:100%;width:' + (av == null ? 0 : av) + '%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div><span class="estPct hint">' + (av == null ? "sin dato" : av + " %") + "</span></td>" +
+        '<td><button type="button" class="btn btn-ghost btn-sm estDel" title="Quitar indicador">✕</button></td></tr>';
+    });
+    h += "</tbody></table></div>" +
+      '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-ghost" id="estAdd">➕ Añadir indicador</button></div>' +
+      '<p class="hint" style="margin-top:8px">El estudio de factibilidad y el informe para el pueblo (pestaña Necesidades) se generan siempre con estos datos del momento: si cambia un indicador o una cifra del plan, los informes salen actualizados.</p></div>';
+
+    document.getElementById("formCtn").innerHTML = h;
+    cablear();
+  }
+
+  function cablear() {
+    var e = est();
+    document.querySelectorAll("#estTabla tbody tr").forEach(function (tr) {
+      var i = +tr.getAttribute("data-ind");
+      tr.querySelectorAll(".estIn").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          e.indicadores[i][inp.getAttribute("data-c")] = inp.value;
+          guardar();
+          var av = avance(e.indicadores[i]);
+          var bar = tr.querySelector(".estBar"), pct = tr.querySelector(".estPct");
+          if (bar) bar.style.width = (av == null ? 0 : av) + "%";
+          if (pct) pct.textContent = (av == null ? "sin dato" : av + " %");
+        });
+      });
+      tr.querySelector(".estDel").addEventListener("click", function () {
+        if (!confirm("¿Quitar este indicador?")) return;
+        e.indicadores.splice(i, 1); guardar(); pintar();
+      });
+    });
+    document.getElementById("estAdd").addEventListener("click", function () {
+      e.indicadores.push({ nombre: "", unidad: "", base: "", meta: "", actual: "", ano: "" });
+      guardar(); pintar();
+    });
+  }
+})();
+</script>
