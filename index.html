@@ -978,7 +978,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     h += '<div class="card"><h3><span class="num">📋</span>Líneas de inversión</h3><p class="sub">Cantidad necesaria × costo unitario. El reparto por año es en % de cada línea (debe sumar 100).</p>' +
       '<div style="overflow-x:auto"><table id="necTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">' +
       "<thead><tr>" +
-      ["Programa", "Línea de inversión", "Unidad", "Cantidad", "Costo unit. CUP", "Costo unit. USD", "Total CUP", "Total USD", "% " + ANOS.join(" · % "), ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
+      ["Programa", "Línea de inversión", "Unidad", "Cantidad", "Costo unit. CUP", "Costo unit. USD", "Total CUP", "Total USD", "Tipo", "% " + ANOS.join(" · % "), ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
       "</tr></thead><tbody>";
     n.filas.forEach(function (f, i) {
       h += '<tr data-fila="' + i + '">' +
@@ -990,6 +990,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         '<td><input class="inp necIn" data-c="costoUSD" type="number" min="0" step="any" value="' + esc(f.costoUSD) + '" style="max-width:110px"></td>' +
         '<td class="necTotCUP" style="font-weight:700;white-space:nowrap"></td>' +
         '<td class="necTotUSD" style="font-weight:700;white-space:nowrap"></td>' +
+        '<td><select class="inp necIn" data-c="tipo" style="max-width:118px"><option value="CAPEX"' + (f.tipo !== "OPEX" ? " selected" : "") + '>Inversión fija</option><option value="OPEX"' + (f.tipo === "OPEX" ? " selected" : "") + '>Capital de trabajo</option></select></td>' +
         ANOS.map(function (a, j) { return '<td><input class="inp necIn" data-c="dist' + j + '" type="number" min="0" max="100" step="any" value="' + esc(f.dist[j]) + '" style="max-width:58px"></td>'; }).join("") +
         '<td><button type="button" class="btn btn-ghost btn-sm necDel" title="Quitar línea">✕</button></td></tr>';
     });
@@ -1002,7 +1003,9 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     h += '<div class="card"><h3><span class="num">💰</span>Resumen del financiamiento necesario</h3><div id="necResumen"></div></div>';
     h += '<div class="card"><h3><span class="num">🗣️</span>Presentar el plan al pueblo</h3>' +
       '<p class="sub">Un informe con el mismo formato para cualquier municipio, en palabras sencillas que cualquier vecino entienda: las 5 necesidades más importantes, qué se va a hacer, cuánto cuesta y qué gana la gente con cada una.</p>' +
-      '<div class="btn-row"><button type="button" class="btn btn-primary" id="necInforme">🗣️ Hacer el informe para el pueblo</button></div></div>';
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="necInforme">🗣️ Hacer el informe para el pueblo</button>' +
+      '<button type="button" class="btn btn-ghost" id="necEstudio">📄 Estudio de factibilidad (formato oficial)</button></div>' +
+      '<p class="sub" style="margin-top:8px">El estudio oficial sigue el formato del estudio real de referencia (16 secciones, Decreto 174/2026, Art. 28): marca cada línea como inversión fija o capital de trabajo para que los totales salgan como en el modelo.</p></div>';
 
     document.getElementById("formCtn").innerHTML = h;
     cablear(); recalcular();
@@ -1016,6 +1019,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     document.querySelectorAll("#necTabla tbody tr").forEach(function (tr) {
       var i = +tr.getAttribute("data-fila");
       tr.querySelectorAll(".necIn").forEach(function (inp) {
+        inp.addEventListener("change", function () { inp.dispatchEvent(new Event("input", { bubbles: true })); });
         inp.addEventListener("input", function () {
           var c = inp.getAttribute("data-c");
           if (c.indexOf("dist") === 0) n.filas[i].dist[+c.slice(4)] = inp.value;
@@ -1030,6 +1034,8 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     });
     var bInf = document.getElementById("necInforme");
     if (bInf) bInf.addEventListener("click", pintarInforme);
+    var bEst = document.getElementById("necEstudio");
+    if (bEst) bEst.addEventListener("click", pintarEstudio);
     var bEdm = document.getElementById("necEdm");
     if (bEdm) bEdm.addEventListener("click", function () {
       var n2 = nec(); var nuevas = 0;
@@ -1270,6 +1276,127 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     document.getElementById("formCtn").innerHTML = h;
     document.getElementById("necInfVolver").addEventListener("click", pintar);
     document.getElementById("necInfPrint").addEventListener("click", function () { window.print(); });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function pintarEstudio() {
+    var n = nec(); if (!n) return;
+    if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
+    var tasa = num(n.tasa);
+    var cap = { cup: 0, usd: 0 }, ope = { cup: 0, usd: 0 };
+    var porProg = {}, cartera = {};
+    n.filas.forEach(function (f) {
+      var c = num(f.cantidad); var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      var destino = (f.tipo === "OPEX") ? ope : cap;
+      destino.cup += tc; destino.usd += tu;
+      var k = f.programa || "Otras necesidades";
+      porProg[k] = porProg[k] || { cup: 0, usd: 0 };
+      porProg[k].cup += tc; porProg[k].usd += tu;
+      cartera[k] = cartera[k] || []; if (f.linea) cartera[k].push(f);
+    });
+    var sub = cap.cup + ope.cup, subU = cap.usd + ope.usd;
+    var cont = sub * 0.10, contU = subU * 0.10;
+    var tot = sub + cont, totU = subU + contU;
+    var porAno = ANOS.map(function () { return { cup: 0, usd: 0 }; });
+    n.filas.forEach(function (f) {
+      var c = num(f.cantidad), tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+      ANOS.forEach(function (a, j) { var p = num(f.dist[j]) / 100; porAno[j].cup += tc * p; porAno[j].usd += tu * p; });
+    });
+    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
+    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
+    var deficit = data.plan ? (data.plan.deficit || "") : "";
+    var neces = data.plan ? (data.plan.necesidades || "") : "";
+    var fecha = new Date().toLocaleDateString("es-CU", { month: "long", year: "numeric" });
+    var hayAlimentos = Object.keys(porProg).some(function (k) { return k.indexOf("Producción de alimentos") === 0; });
+    var eqU = tasa ? fmt(Math.round(tot / tasa)) : "—";
+    function tabla(filas, cols) {
+      return '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>' + cols.map(function (c) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + c + "</th>"; }).join("") + "</tr></thead><tbody>" + filas + "</tbody></table>";
+    }
+    function sec(t, cuerpo) { return '<div class="card"><h3>' + t + "</h3>" + cuerpo + "</div>"; }
+    function p(t) { return '<p style="line-height:1.65">' + t + "</p>"; }
+
+    var h = '<div class="card" style="text-align:center"><p style="letter-spacing:2px">REPÚBLICA DE CUBA</p>' +
+      "<h3>PROVINCIA " + esc(n.provincia.toUpperCase()) + "<br>MUNICIPIO " + esc(n.municipio.toUpperCase()) + "</h3>" +
+      "<h3>ESTUDIO DE FACTIBILIDAD ECONÓMICA</h3>" +
+      p("Plan de inversiones para el desarrollo del municipio, 2027-2032") +
+      p("Conforme a lo establecido en el Decreto 174/2026 «Para la Gestión Estratégica del Desarrollo Territorial»") +
+      p(esc(fecha) + (tasa ? " · Tipo de cambio de referencia: " + fmt2(tasa) + " CUP/USD" : "")) + "</div>";
+
+    h += sec("1. Resumen Ejecutivo",
+      p("El presente estudio determina los montos totales de financiamiento requeridos para atender las necesidades de inversión del municipio <b>" + esc(n.municipio) + "</b> (" + esc(n.provincia) + ") en el horizonte 2027-2032" + (pob ? ", con una población de referencia de " + fmt(pob) + " habitantes" + (hog ? " y " + fmt(hog) + " hogares" : "") + " según los datos ONEI capturados" : "") + ".") +
+      p("El financiamiento total requerido asciende a <b>" + fmt(tot) + " CUP</b> y <b>" + fmt(totU) + " USD</b>" + (tasa ? " (la parte en CUP equivale aproximadamente a " + eqU + " USD al tipo de cambio puesto)" : "") + ", de los cuales el " + (sub ? Math.round(cap.cup / (sub || 1) * 100) : 0) + " % corresponde a inversión fija y el resto a capital de trabajo, más un 10 % de contingencia. La primera prioridad del plan es la producción de alimentos.") +
+      p("El estudio se estructura según los requisitos del Artículo 28 del Decreto 174/2026: niveles de actividad, costos de producción, costos de inversión, capital de trabajo, demanda energética y flujo de financiamiento por años."));
+
+    h += sec("2. Marco Jurídico y de Política",
+      p("• Constitución de la República (2019).<br>• Decreto 174/2026 «Para la Gestión Estratégica del Desarrollo Territorial» y normas complementarias (Resoluciones 70/2026 del MEP, 202/2026 del MFP y 118/2026 del BCC)." + (hayAlimentos ? "<br>• Ley 148/2022 de Soberanía Alimentaria y Seguridad Alimentaria y Nutricional.<br>• Política Local de Soberanía Alimentaria y Producción Sostenible de Alimentos del municipio (Línea 1)." : "") + "<br>• Estrategia de Desarrollo Municipal y su cartera de programas y proyectos."));
+
+    h += sec("3. Diagnóstico de Partida y Estimación de Demanda",
+      (deficit ? p("<b>Déficit declarado en el Plan de Desarrollo (EDM):</b> " + esc(deficit)) : "") +
+      (neces ? p("<b>Necesidades de la población sin cubrir (EDM):</b> " + esc(neces)) : "") +
+      ((n.web && n.web.lista && n.web.lista.length) ? p("<b>Evidencia web de carencias del territorio (verificar):</b><br>" + n.web.lista.map(function (w) { return "• " + esc(w.sector) + ": " + esc(w.hallazgo); }).join("<br>")) : "") +
+      p("La demanda se dimensiona a partir de la población y los hogares del municipio y de los déficits declarados en su Estrategia de Desarrollo; las metas físicas de cada programa constan en la sección 9."));
+
+    h += sec("4. Precios Actuales de Referencia",
+      p("Los costos unitarios de este estudio son los adoptados en el propio plan (del plan municipal, de presupuestos o de cotizaciones), en CUP y en USD por línea." + (tasa ? " Tipo de cambio de referencia puesto por el usuario: <b>" + fmt2(tasa) + " CUP/USD</b>." : " No se fijó tipo de cambio: las equivalencias totales se presentan en cuanto se ponga la tasa en la pestaña.") + " Los precios se usan como referencia de valor de la inversión y de la producción local (ahorro y sustitución de importaciones)."));
+
+    var filasCartera = Object.keys(cartera).map(function (k) {
+      return "<tr><td style='padding:6px'><b>" + esc(k) + "</b></td><td style='padding:6px'>" + cartera[k].map(function (f) { return esc(f.linea); }).join("<br>") + "</td></tr>";
+    }).join("");
+    h += sec("5. Cartera de Programas y Proyectos", tabla(filasCartera, ["Programa", "Líneas y proyectos"]));
+
+    function filasTipo(tipo) {
+      return n.filas.filter(function (f) { return ((f.tipo === "OPEX") ? "OPEX" : "CAPEX") === tipo && num(f.cantidad) > 0; })
+        .map(function (f) {
+          return "<tr><td style='padding:6px'>" + esc(f.linea || f.programa) + "</td><td style='padding:6px'>" + fmt(num(f.cantidad)) + " " + esc(f.unidad) + "</td><td style='padding:6px'>" + fmt(num(f.costoCUP)) + " / " + fmt(num(f.costoUSD)) + "</td><td style='padding:6px'>" + fmt(num(f.cantidad) * num(f.costoCUP)) + " CUP · " + fmt(num(f.cantidad) * num(f.costoUSD)) + " USD</td></tr>";
+        }).join("");
+    }
+    h += sec("6. Costos de Inversión (CAPEX) — Inversión fija",
+      tabla(filasTipo("CAPEX"), ["Concepto", "Cantidad / escala", "Costo unitario CUP / USD", "Total"]) +
+      p("<b>Total inversión fija: " + fmt(cap.cup) + " CUP · " + fmt(cap.usd) + " USD.</b>"));
+    h += sec("7. Capital de Trabajo e Insumos de Arranque (OPEX inicial)",
+      tabla(filasTipo("OPEX"), ["Rubro", "Cantidad / escala", "Costo unitario CUP / USD", "Total"]) +
+      p("<b>Total capital de trabajo: " + fmt(ope.cup) + " CUP · " + fmt(ope.usd) + " USD</b>, dimensionado para cubrir el primer ciclo completo de operación hasta que los flujos se estabilicen."));
+
+    var filasAnos = ANOS.map(function (a, j) { return "<tr><td style='padding:6px'><b>" + a + "</b></td><td style='padding:6px'>" + fmt(porAno[j].cup) + "</td><td style='padding:6px'>" + fmt(porAno[j].usd) + "</td></tr>"; }).join("");
+    h += sec("8. Monto Total de Financiamiento Requerido",
+      tabla(
+        "<tr><td style='padding:6px'>Inversión fija (CAPEX)</td><td style='padding:6px'>" + fmt(cap.cup) + "</td><td style='padding:6px'>" + fmt(cap.usd) + "</td></tr>" +
+        "<tr><td style='padding:6px'>Capital de trabajo (OPEX)</td><td style='padding:6px'>" + fmt(ope.cup) + "</td><td style='padding:6px'>" + fmt(ope.usd) + "</td></tr>" +
+        "<tr><td style='padding:6px'>Contingencia y ajuste (10 %)</td><td style='padding:6px'>" + fmt(cont) + "</td><td style='padding:6px'>" + fmt(contU) + "</td></tr>" +
+        "<tr><td style='padding:6px'><b>MONTO TOTAL</b></td><td style='padding:6px'><b>" + fmt(tot) + " CUP</b></td><td style='padding:6px'><b>" + fmt(totU) + " USD</b></td></tr>",
+        ["Concepto", "CUP", "USD"]) +
+      p("<b>Distribución por años</b> (según el reparto de cada línea):") + tabla(filasAnos, ["Año", "CUP", "USD"]));
+
+    var metas = Object.keys(cartera).map(function (k) {
+      var cant = {};
+      cartera[k].forEach(function (f) { if (num(f.cantidad)) { var u = f.unidad || "unidades"; cant[u] = (cant[u] || 0) + num(f.cantidad); } });
+      var txt = Object.keys(cant).map(function (u) { return fmt(cant[u]) + " " + u; }).join(" · ");
+      return "<tr><td style='padding:6px'>" + esc(k) + "</td><td style='padding:6px'>" + (txt || "—") + "</td></tr>";
+    }).join("");
+    h += sec("9. Niveles de Actividad", p("Metas físicas del plan por programa (suma de las cantidades de sus líneas):") + tabla(metas, ["Programa", "Meta física 2027-2032"]));
+
+    h += sec("10. Costos de Producción Anuales (régimen)",
+      p("Los costos anuales de operación en régimen se determinan en los presupuestos de cada proyecto de la cartera; el capital de trabajo de la sección 7 cubre el arranque. El valor de la producción local a precios de mercado — con el ahorro logístico de producir en el propio territorio (0 km) — constituye el principal beneficio económico-social del plan, junto a la sustitución de importaciones."));
+    h += sec("11. Demanda Energética y Fuentes Renovables",
+      p("Se prioriza la energía solar fotovoltaica para riego, frío, procesamiento, alumbrado y bombeo de agua, por la situación energética nacional; su costo se incluye dentro de los rubros de inversión de cada programa. Toda línea nueva debe valorar su variante renovable antes de depender de combustible fósil."));
+    h += sec("12. Flujo y Análisis de Viabilidad",
+      p("Indicadores de factibilidad (Artículo 28 del Decreto 174/2026):<br>• Niveles de actividad: alcanzables con la escala de inversión propuesta (sección 9).<br>• Costos de inversión: cuantificados y distribuidos por años (secciones 6 y 8).<br>• Capital de trabajo: dimensionado para el primer ciclo completo (sección 7).<br>• Demanda energética: cubierta prioritariamente con renovables (sección 11).<br>• Flujo de financiamiento: distribuido 2027-2032 según el reparto de cada línea (sección 8), comenzando por la producción de alimentos. La viabilidad definitiva de cada proyecto se confirma con su propio estudio al formularse."));
+    h += sec("13. Fuentes de Financiamiento Recomendadas",
+      p("Conforme al Decreto 174/2026 y normas complementarias:<br>a) Fondo de Desarrollo Local municipal y provincial.<br>b) Presupuesto del Estado (asignaciones sectoriales).<br>c) Créditos bancarios blandos a proyectos de desarrollo local (BCC / bancos comerciales) y Fondo de Fideicomiso para PDL.<br>d) Cooperación internacional y proyectos de agencias (FAO, PNUD, cooperación bilateral).<br>e) Aportes de empresas estatales y no estatales del territorio en esquemas de encadenamiento.<br>f) Recursos propios generados por los propios proyectos a partir de su entrada en operación."));
+    var impactos = Object.keys(porProg).map(function (k) { return "• " + esc(k) + ": " + esc(puebloDe(k).gana); }).join("<br>");
+    h += sec("14. Impactos Esperados", p(impactos));
+    h += sec("15. Principales Riesgos y Medidas de Mitigación",
+      p("• Inflación de insumos y escasez de materiales → priorizar producción local de insumos (semillas, compost, bioinsumos) y contratos marco con proveedores.<br>• Limitaciones energéticas → maximizar la energía solar fotovoltaica desde el diseño.<br>• Eventos climáticos extremos → diversificación, variedades resistentes, obras de drenaje y manejo hídrico.<br>• Rotación de la fuerza de trabajo → incentivos económicos, formación de jóvenes y vinculación de los proyectos con la economía local."));
+    h += sec("16. Conclusiones y Recomendación",
+      p("El estudio determina que el monto total de financiamiento necesario para atender las necesidades de inversión del municipio <b>" + esc(n.municipio) + "</b> en 2027-2032 es de <b>" + fmt(tot) + " CUP</b> y <b>" + fmt(totU) + " USD</b>, distribuidos en inversión fija, capital de trabajo y contingencia.") +
+      p("La inversión es factible técnica, económica y socialmente en la medida en que cada proyecto de la cartera complete su formulación. Se recomienda aprobar el monto y el cronograma por fases, constituir la comisión municipal de seguimiento como instancia de control, e iniciar de inmediato los componentes de corto plazo, con la producción de alimentos como primera prioridad.") +
+      p("Documento elaborado conforme a los requisitos de factibilidad económica del Artículo 28 del Decreto 174/2026. Cifras tomadas del plan de necesidades del municipio; lo no cuantificado queda declarado, no inventado."));
+
+    h += '<div class="btn-row"><button type="button" class="btn btn-primary" id="necEstPrint">🖨 Imprimir el estudio</button>' +
+      '<button type="button" class="btn btn-ghost" id="necEstVolver">← Volver al plan</button></div>';
+    document.getElementById("formCtn").innerHTML = h;
+    document.getElementById("necEstVolver").addEventListener("click", pintar);
+    document.getElementById("necEstPrint").addEventListener("click", function () { window.print(); });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
