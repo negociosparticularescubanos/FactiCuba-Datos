@@ -1763,6 +1763,131 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   }
 })();
 </script>
+<script id="fc-agente-js">
+// fcAgente: tarjeta «Agente de estudio del municipio» dentro de la pestaña Necesidades.
+(function () {
+  var SRV = (typeof URL_SERVIDOR !== "undefined") ? URL_SERVIDOR : "https://script.google.com/macros/s/AKfycbzVAc0OZAWV8_XDeiRBRGDVYw7YZoDla99r89i6azBy54IzzM5aF8TlTvR5iPcrDvaLWg/exec";
+  var $ = function (i) { return document.getElementById(i); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); };
+  var sondeo = null, ultimos = [];
+  var INST = {
+    "Gobierno municipal": ["Gobierno Municipal / Asamblea Municipal del Poder Popular", ["Estrategia de Desarrollo Municipal vigente y su balance más reciente", "Principales problemas y necesidades identificados por el Consejo de la Administración", "Proyectos de Desarrollo Local aprobados y su estado", "Presupuesto de inversiones previsto para 2027-2032"]],
+    "Agua y saneamiento": ["Dirección Municipal de Acueducto y Alcantarillado", ["Porcentaje de la población con servicio de agua y horas diarias de servicio", "Cantidad de salideros y kilómetros de redes en mal estado", "Déficit de agua en m³ por día y comunidades afectadas", "Obras de acueducto y alcantarillado previstas y su costo"]],
+    "Energía": ["Empresa Eléctrica del municipio", ["Circuitos y comunidades con mayores afectaciones del servicio", "Déficit de generación y horas promedio de apagón", "Transformadores y redes en mal estado", "Proyectos de energía renovable previstos"]],
+    "Vivienda": ["Dirección Municipal de la Vivienda", ["Total de viviendas y déficit habitacional (cantidad)", "Viviendas en mal estado, derrumbes parciales y totales", "Familias en albergues o en condiciones críticas", "Programa de construcción y rehabilitación previsto"]],
+    "Vialidad y transporte": ["Dirección Municipal de Transporte y Viales", ["Kilómetros de viales en mal estado y puentes afectados", "Rutas de transporte público, frecuencias y medios disponibles", "Comunidades sin acceso regular al transporte", "Obras viales previstas"]],
+    "Salud": ["Dirección Municipal de Salud", ["Consultorios, policlínicos y hospitales: cantidad y estado constructivo", "Déficit de médicos, enfermeros y medicamentos", "Equipamiento fuera de servicio", "Inversiones previstas en instalaciones de salud"]],
+    "Educación": ["Dirección Municipal de Educación", ["Escuelas y círculos infantiles: cantidad y estado constructivo", "Déficit de docentes y de matrícula atendida", "Necesidades de mobiliario y recursos", "Obras de reparación previstas"]],
+    "Producción de alimentos": ["Delegación Municipal de la Agricultura", ["Producción local por rubro (viandas, hortalizas, frutas, carne, leche) frente a la demanda", "Tierra ociosa o infrautilizada en hectáreas", "Principales limitaciones: insumos, riego, maquinaria, transporte, acopio", "Metas del municipio para 2027-2032"]],
+    "Turismo": ["Delegación Municipal de Turismo / Gobierno municipal", ["Capacidades de alojamiento y su estado", "Visitantes anuales y atractivos por desarrollar", "Servicios turísticos que faltan", "Proyectos previstos"]],
+    "Industria y comercio local": ["Dirección Municipal de Comercio / Industria Local", ["Entidades productivas y comerciales activas y su estado", "Empleo y desempleo local", "Producciones locales que se pueden ampliar", "Necesidades de equipamiento y materias primas"]],
+    "Medio ambiente": ["Unidad Municipal de Medio Ambiente (CITMA)", ["Principales problemas ambientales del municipio", "Manejo de residuales y desechos sólidos", "Áreas degradadas por recuperar", "Proyectos de recuperación previstos"]],
+    "Comunicaciones": ["Dirección Municipal de ETECSA / Comunicaciones", ["Comunidades sin cobertura móvil o de internet", "Calidad y disponibilidad del servicio telefónico", "Proyectos de ampliación previstos"]]
+  };
+  function nec() { return (typeof data !== "undefined" && data.necesidades) || null; }
+  function lugar() { var n = nec() || {}; return { p: n.provincia || "", m: n.municipio || "" }; }
+  function otros(p, m) {
+    var out = [];
+    try { var v = PROVINCIAS[p], l = Array.isArray(v) ? v : (v && typeof v === "object" ? Object.keys(v) : []); l.forEach(function (x) { if (x !== m) out.push(x); }); } catch (e) {}
+    return out;
+  }
+  function api(accion, q, body) {
+    if (!SRV) return Promise.resolve({ ok: false, error: "Sin servidor configurado." });
+    var url = SRV + "?accion=" + accion + "&provincia=" + encodeURIComponent(q.p) + "&municipio=" + encodeURIComponent(q.m);
+    var op = body ? { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body) } : {};
+    return fetch(body ? SRV : url, op).then(function (r) { return r.json(); }).catch(function () { return { ok: false, error: "No hay conexión con el servidor." }; });
+  }
+  function aviso(t) { var e = $("agEstado"); if (e) e.innerHTML = t; }
+  function html() {
+    return '<div class="card" id="fcAgente"><h3><span class="num">🤖</span>Agente de estudio del municipio (segundo plano)</h3>' +
+      '<p class="sub">Un agente en el servidor estudia el municipio elegido: busca en la web pública por 11 temas, lee las páginas, se queda solo con carencias que traten de ESE municipio y del tema correcto, y cuenta cuántas fuentes distintas las respaldan. Trabaja por turnos y puede tardar unos minutos: puedes cerrar la página y volver. No inventa datos ni envía mensajes por su cuenta.</p>' +
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="agPedir">🤖 Pedir estudio a fondo</button>' +
+      '<button type="button" class="btn btn-ghost" id="agVer">🔄 Ver estado y hallazgos</button>' +
+      '<button type="button" class="btn btn-ghost" id="agCarta">✉️ Solicitar datos a las instituciones</button></div>' +
+      '<div id="agEstado" class="hint" style="margin-top:8px"></div><div id="agRes"></div><div id="agCartas"></div></div>';
+  }
+  function pintarRes(lista) {
+    ultimos = lista; var c = $("agRes"); if (!c) return;
+    if (!lista.length) { c.innerHTML = ""; return; }
+    var por = {}; lista.forEach(function (h, i) { h._i = i; (por[h.sector] = por[h.sector] || []).push(h); });
+    c.innerHTML = '<p class="hint">' + lista.length + ' hallazgos del agente — VERIFICAR antes de presentar:</p>' +
+      Object.keys(por).map(function (s) {
+        return '<div style="border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:10px;margin-top:8px"><b>' + esc(s) + '</b>' +
+          por[s].map(function (h) {
+            return '<div style="margin-top:6px">' + esc(h.hallazgo) + '<div class="hint">' + (h.corrobora >= 2 ? '✅ Respaldada por ' + h.corrobora + ' fuentes distintas' : '⚠ Una sola fuente: verificar') +
+              ' · <a href="' + esc(h.url) + '" target="_blank" rel="noopener" style="color:#8ec5ff">' + esc(h.fuente) + '</a> · ' + esc(h.fecha) +
+              ' · <button type="button" class="btn btn-ghost btn-sm agAdd" data-i="' + h._i + '">➕ Añadir al plan</button></div></div>';
+          }).join("") + "</div>";
+      }).join("") + '<div class="btn-row"><button type="button" class="btn btn-primary btn-sm" id="agIncorporar">📎 Incorporar al estudio y al informe</button></div>';
+  }
+  function ver() {
+    var q = lugar(); if (!q.m) { aviso("Primero elige provincia y municipio."); return; }
+    api("agente_estado", q).then(function (e) {
+      if (!e.ok) { aviso("⚠ " + esc(e.error || "Sin respuesta.")); return; }
+      var t = { sin_pedido: "Aún no has pedido el estudio de este municipio.", pendiente: "⏳ En cola: el agente lo tomará en los próximos minutos.", en_curso: "🔎 El agente está estudiando el municipio ahora mismo…", hecho: "✅ Estudio terminado (" + (e.hallazgos || 0) + " hallazgos).", error: "⚠ El estudio falló: " + esc(e.nota || "inténtalo de nuevo.") }[e.estado] || esc(e.estado);
+      aviso(t + (e.nota && e.estado === "hecho" ? " " + esc(e.nota) : ""));
+      if (e.estado === "pendiente" || e.estado === "en_curso") { clearTimeout(sondeo); sondeo = setTimeout(ver, 20000); return; }
+      if (e.estado === "hecho") api("agente_resultados", q).then(function (r) { pintarRes((r && r.resultados) || []); });
+    });
+  }
+  function pedir() {
+    var q = lugar(); if (!q.m) { aviso("Primero elige provincia y municipio."); return; }
+    aviso("Enviando el pedido…");
+    api("agente_encolar", q, { accion: "agente_encolar", provincia: q.p, municipio: q.m, otros: otros(q.p, q.m) }).then(function (r) {
+      if (!r.ok) { aviso("⚠ " + esc(r.error || "No se pudo encolar.")); return; }
+      aviso(r.reciente ? "Este municipio se estudió hace poco: te muestro lo hallado." : "📥 Pedido recibido. El agente trabaja en segundo plano; esta página mira el avance cada 20 segundos.");
+      ver();
+    });
+  }
+  function carta(clave) {
+    var q = lugar(), d = INST[clave], usuario = (typeof currentUser !== "undefined" && currentUser) || "";
+    var pre = d[1].map(function (x, i) { return (i + 1) + ". " + x; }).join("\n");
+    return "Asunto: Solicitud de información para el estudio de necesidades de " + q.m + " (" + q.p + ")\n\nEstimados compañeros de la " + d[0] + ":\n\n" +
+      "Estamos preparando el estudio de factibilidad y el plan de inversiones 2027-2032 del municipio de " + q.m + ", conforme al Decreto 174/2026. Para que el estudio refleje la realidad y no cifras supuestas, les solicitamos, en lo que puedan compartir, la siguiente información actualizada:\n\n" + pre +
+      "\n\nSi algún dato no está disponible o no puede compartirse, les agradeceremos que nos lo indiquen y nos señalen la fuente oficial a la que acudir. Citaremos la fuente y la fecha de cada dato.\n\nQuedamos a su disposición.\n\nAtentamente,\n" + (usuario ? usuario + "\n" : "") + new Date().toLocaleDateString("es-CU");
+  }
+  function pintarCarta() {
+    var q = lugar(); if (!q.m) { aviso("Primero elige provincia y municipio."); return; }
+    var c = $("agCartas");
+    c.innerHTML = '<p class="hint" style="margin-top:10px">Elige la institución. Revisa y edita el texto: tú decides cómo y a quién enviarlo (la página no envía nada sola).</p>' +
+      '<div class="selwrap"><select class="inp" id="agInst">' + Object.keys(INST).map(function (k) { return "<option>" + esc(k) + "</option>"; }).join("") + '</select><span class="chev"></span></div>' +
+      '<textarea class="inp" id="agTexto" rows="14" style="margin-top:8px"></textarea>' +
+      '<div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" id="agCopiar">📋 Copiar</button><button type="button" class="btn btn-ghost btn-sm" id="agCorreo">✉️ Abrir en el correo</button><button type="button" class="btn btn-ghost btn-sm" id="agWa">💬 WhatsApp</button><button type="button" class="btn btn-ghost btn-sm" id="agImp">🖨 Imprimir</button></div>';
+    var sel = $("agInst"), ta = $("agTexto"); ta.value = carta(sel.value);
+    sel.onchange = function () { ta.value = carta(sel.value); };
+    $("agCopiar").onclick = function () { ta.select(); try { document.execCommand("copy"); aviso("📋 Texto copiado."); } catch (e) {} };
+    $("agCorreo").onclick = function () { var t = ta.value.split("\n"), asu = t[0].replace("Asunto: ", ""); location.href = "mailto:?subject=" + encodeURIComponent(asu) + "&body=" + encodeURIComponent(t.slice(2).join("\n")); };
+    $("agWa").onclick = function () { window.open("https://wa.me/?text=" + encodeURIComponent(ta.value), "_blank"); };
+    $("agImp").onclick = function () { var w = window.open("", "_blank"); if (w) { w.document.write("<pre style='font:14px/1.6 sans-serif;white-space:pre-wrap;padding:24px'>" + esc(ta.value) + "</pre>"); w.document.close(); w.print(); } };
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest && e.target.closest("button"); if (!t) return;
+    if (t.id === "agPedir") pedir();
+    else if (t.id === "agVer") ver();
+    else if (t.id === "agCarta") pintarCarta();
+    else if (t.classList.contains("agAdd")) {
+      var h = ultimos[+t.dataset.i], n = nec(); if (!h || !n) return;
+      n.filas.push({ programa: h.sector, linea: h.hallazgo.slice(0, 110), unidad: "", cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10], tipo: "CAPEX" });
+      if (typeof persist === "function") persist(); t.textContent = "✔ Añadida"; t.disabled = true;
+    } else if (t.id === "agIncorporar") {
+      var n2 = nec(); if (!n2) return;
+      n2.web = n2.web || { fecha: new Date().toLocaleString("es-CU"), municipio: n2.municipio, lista: [], limpia: 1 };
+      var ya = {}; n2.web.lista.forEach(function (x) { ya[x.hallazgo] = 1; });
+      ultimos.slice().sort(function (a, b) { return b.corrobora - a.corrobora; }).reverse().forEach(function (h) {
+        if (!ya[h.hallazgo]) n2.web.lista.unshift({ sector: h.sector, hallazgo: h.hallazgo, fuente: h.fuente, url: h.url, origen: "agente", fecha: h.fecha });
+      });
+      n2.web.limpia = 1; if (typeof persist === "function") persist(); t.textContent = "✔ Incorporados: el estudio y el informe ya los usan"; t.disabled = true;
+    }
+  });
+  function montar() {
+    var w = $("necWeb"); if (!w || $("fcAgente")) return;
+    var card = w.closest(".card"); if (card) card.insertAdjacentHTML("afterend", html());
+  }
+  new MutationObserver(montar).observe(document.body, { childList: true, subtree: true });
+  montar();
+})();
+</script>
+
 <script id="fc-pulido-js">
 (function(){
   var $=function(s,c){return (c||document).querySelector(s)};

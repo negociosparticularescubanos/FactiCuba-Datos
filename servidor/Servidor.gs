@@ -92,6 +92,7 @@ function guardar(usuario, datos) {
 function doGet(e) {
   var a = (e.parameter.accion || 'ping').toLowerCase();
   try {
+    if (a.indexOf('agente_') === 0) return salida(agenteRuta_(a, e.parameter, {}));
     if (a === 'ping') return salida({ ok: true, servicio: 'FactiCuba-Datos', ts: new Date().toISOString() });
     if (a === 'cargar') {
       var u = e.parameter.usuario || '';
@@ -114,6 +115,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents || '{}');
+    if (String(body.accion || '').indexOf('agente_') === 0) return salida(agenteRuta_(body.accion, {}, body));
     if (body.accion === 'guardar') {
       if (!body.usuario || !body.datos) return salida({ ok: false, error: 'Faltan usuario o datos' });
       return salida(guardar(String(body.usuario), body.datos));
