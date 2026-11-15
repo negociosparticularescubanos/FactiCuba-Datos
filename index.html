@@ -875,7 +875,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
 
   function defecto() {
     return {
-      provincia: "", municipio: "", tasa: "",
+      provincia: "", municipio: "", tasa: "", web: null,
       filas: CATALOGO.map(function (c) {
         return { programa: c[0], linea: c[1], unidad: c[2], cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] };
       })
@@ -953,6 +953,11 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       (neces ? '<div class="hint" style="margin-top:6px">📌 <b>Necesidades sin cubrir (Plan EDM):</b> ' + esc(neces) + "</div>" : "") +
       "</div>";
 
+    h += '<div class="card"><h3><span class="num">🔎</span>Necesidades detectadas en la web</h3>' +
+      '<p class="sub">Busco en la web las necesidades y carencias publicadas del municipio elegido y te muestro las más importantes con su fuente. Tú decides cuáles pasan al plan: nada entra solo.</p>' +
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="necBuscar">🔎 Buscar necesidades del municipio</button></div>' +
+      '<div id="necWeb" style="margin-top:10px">' + htmlWeb(n) + "</div></div>";
+
     h += '<div class="card"><h3><span class="num">📋</span>Líneas de inversión</h3><p class="sub">Cantidad necesaria × costo unitario. El reparto por año es en % de cada línea (debe sumar 100).</p>' +
       '<div style="overflow-x:auto"><table id="necTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:860px">' +
       "<thead><tr>" +
@@ -1003,6 +1008,16 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         n.filas.splice(i, 1); guardar(); pintar();
       });
     });
+    var bBuscar = document.getElementById("necBuscar");
+    if (bBuscar) bBuscar.addEventListener("click", buscarWeb);
+    document.querySelectorAll(".necWebAdd").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.getAttribute("data-i"); var w = (nec().web && nec().web.lista) || [];
+        if (!w[i]) return;
+        nec().filas.push({ programa: w[i].sector, linea: w[i].hallazgo.slice(0, 110), unidad: "", cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
+        guardar(); pintar(); toast("➕ Línea añadida al plan: " + w[i].sector);
+      });
+    });
     document.getElementById("necAdd").addEventListener("click", function () {
       n.filas.push({ programa: "", linea: "", unidad: "", cantidad: "", costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
       guardar(); pintar();
@@ -1012,6 +1027,80 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       if (!confirm("¿Vaciar todo el plan de necesidades?")) return;
       data.necesidades = defecto(); guardar(); pintar();
     });
+  }
+
+  var URL_BUSCAR = "https://script.google.com/macros/s/AKfycbw02a9gP8DimXUlm9HP5Lg6ZAD3r_y-A8xSnGsSj6YN02WBzb59e4_Ocl2INDRIDcCu/exec?ruta=buscar";
+  var SECTORES = [
+    ["Agua y saneamiento", /agua|acueducto|alcantarillado|saneamiento|potabilizadora|salidero/i],
+    ["Energía", /electric|apag[oó]n|alumbrado|energ[ií]a|paneles solares|termoel[eé]ctrica/i],
+    ["Vivienda", /vivienda|habitacional|derrumbe|albergue/i],
+    ["Vialidad y transporte", /vial|carretera|puente|transporte|[oó]mnibus|baches/i],
+    ["Salud", /salud|hospital|policl[ií]nico|consultorio|medicamento/i],
+    ["Educación", /escuela|c[ií]rculo infantil|educaci[oó]n|maestros/i],
+    ["Producción de alimentos", /alimento|agricultur|producci[oó]n|cultivo|ganader|abasto|vianda/i],
+    ["Turismo", /turismo|tur[ií]st|hotel|visitantes/i],
+    ["Industria y comercio local", /industria|comercio|minindustria|f[aá]brica|empleo/i],
+    ["Medio ambiente", /medio ambiente|contaminaci[oó]n|residuales|manglar|erosi[oó]n/i],
+    ["Comunicaciones", /internet|cobertura|telefon[ií]a|comunicaciones|etecsa/i]
+  ];
+  function htmlWeb(n) {
+    if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón.</p>';
+    if (!n.web.lista.length) return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " para <b>" + esc(n.web.municipio) + '</b>: la web devolvió poca evidencia clara de necesidades. Prueba de nuevo o trabaja con el Plan EDM del territorio.</p>';
+    return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " · municipio: <b>" + esc(n.web.municipio) + "</b> · " + n.web.lista.length + ' necesidades con evidencia web — VERIFICAR antes de presentar:</p>' +
+      n.web.lista.map(function (w, i) {
+        return '<div style="border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:10px;margin-top:8px">' +
+          "<b>" + esc(w.sector) + ".</b> " + esc(w.hallazgo) +
+          '<div class="hint" style="margin-top:4px">Fuente: ' + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener" style="color:#8ec5ff">' + esc(w.fuente) + "</a>" : esc(w.fuente)) +
+          ' · <button type="button" class="btn btn-ghost btn-sm necWebAdd" data-i="' + i + '">➕ Añadir al plan</button></div></div>';
+      }).join("");
+  }
+  function buscarWeb() {
+    var n = nec();
+    if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
+    var caja = document.getElementById("necWeb");
+    if (caja) caja.innerHTML = '<p class="hint">🔎 Buscando en la web las necesidades de ' + esc(n.municipio) + "… (puede tardar unos segundos)</p>";
+    var m = n.municipio, p = n.provincia;
+    var qs = [
+      "necesidades carencias déficit " + m + " " + p + " Cuba",
+      "problemas agua vivienda electricidad " + m + " Cuba",
+      "desarrollo local " + m + " necesidades inversión programas",
+      m + " " + p + " abasto viales transporte salud problemas población"
+    ];
+    function consultar(q) {
+      return fetch(URL_BUSCAR + "&q=" + encodeURIComponent(q)).then(function (r) { return r.json(); })
+        .then(function (d) { return (d && d.items) || []; }).catch(function () { return []; });
+    }
+    Promise.all(qs.map(consultar)).then(function (listas) {
+      var items = [];
+      listas.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); });
+      if (items.length < 4) {
+        return Promise.all([consultar("necesidades déficit provincia " + p + " Cuba"), consultar("carencias servicios población " + p + " Cuba")])
+          .then(function (extra) { extra.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); }); return items; });
+      }
+      return items;
+    }).then(function (items) {
+      var porSector = {};
+      items.forEach(function (it) {
+        var texto = String(it.extracto || it.texto || it.titulo || "");
+        var frases = texto.split(/(?<=[.!?])\s+/);
+        SECTORES.forEach(function (s) {
+          if (!s[1].test(texto)) return;
+          var frase = frases.filter(function (f) { return s[1].test(f) && /falta|d[eé]ficit|necesid|problem|deterior|escasez|carencia|insuficien|demanda|afectac/i.test(f); })[0] || frases.filter(function (f) { return s[1].test(f); })[0] || texto.slice(0, 200);
+          frase = frase.trim().slice(0, 220);
+          if (frase.length < 25) return;
+          porSector[s[0]] = porSector[s[0]] || [];
+          if (!porSector[s[0]].some(function (x) { return x.hallazgo === frase; }))
+            porSector[s[0]].push({ sector: s[0], hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "" });
+        });
+      });
+      var sectores = Object.keys(porSector).sort(function (a, b) { return porSector[b].length - porSector[a].length; });
+      var lista = [];
+      sectores.forEach(function (s) { if (porSector[s][0]) lista.push(porSector[s][0]); });
+      sectores.forEach(function (s) { for (var i = 1; i < porSector[s].length && lista.length < 8; i++) lista.push(porSector[s][i]); });
+      n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: lista.slice(0, 8) };
+      guardar(); pintar();
+      toast(lista.length ? "🔎 " + lista.length + " necesidades encontradas para " + m : "🔎 Poca evidencia web para " + m);
+    }).catch(function () { toast("No se pudo buscar (sin conexión)."); });
   }
 
   function recalcular() {
