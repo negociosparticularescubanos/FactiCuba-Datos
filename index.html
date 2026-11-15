@@ -1315,6 +1315,16 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   ];
   var URL_BUSCAR = "https://script.google.com/macros/s/AKfycbw02a9gP8DimXUlm9HP5Lg6ZAD3r_y-A8xSnGsSj6YN02WBzb59e4_Ocl2INDRIDcCu/exec?ruta=buscar";
   var URL_KB = "https://script.google.com/macros/s/AKfycbzDmBLwgQj0Mx-YKryieWePKs7jFO29FX5D1Mn3KLj9ICnkSUsJwztwtNzUHj6e_5PJ6g/exec";
+  var URL_HUB = "https://script.google.com/macros/s/AKfycbzBrhyvGu3yBC4RfVCqFHQXKmxzqj56JosS7uDNR9CCAtVOmiCmtx07i0zmrSZyvvvG/exec";
+  function hubCarencias(mun, prov) {
+    return fetch(URL_HUB + "?accion=carencias&municipio=" + encodeURIComponent(mun) + "&provincia=" + encodeURIComponent(prov || ""))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        return ((d && d.carencias) || []).map(function (c) {
+          return { sector: String(c.categoria || "Necesidad territorial"), hallazgo: String(c.resumen_necesidad || ""), fuente: "Hub Central", url: String(c.fuente_url || ""), origen: "hub", fecha: String(c.fecha || "").slice(0, 10) };
+        }).filter(function (w) { return w.hallazgo.length >= 10; }).slice(0, 8);
+      }).catch(function () { return []; });
+  }
   function kbRefs(municipio) {
     return fetch(URL_KB + "?accion=refs&municipio=" + encodeURIComponent(municipio)).then(function (r) { return r.json(); })
       .then(function (d) { return (d && d.refs) || []; }).catch(function () { return []; });
@@ -1389,13 +1399,14 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   }
   function sectorValido(frase, m) { return lugarOk(frase, "", m) ? sectorDeFrase(frase) : null; }
   function htmlWeb(n) {
-    if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón: la página busca PRIMERO en la Base de Conocimiento y solo va a la web si allí no hay suficiente.</p>';
+    if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón: la página consulta PRIMERO el Hub Central y la Base de Conocimiento, y solo va a la web si allí no hay suficiente.</p>';
     if (!n.web.lista.length) return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " para <b>" + esc(n.web.municipio) + '</b>: la web devolvió poca evidencia clara de necesidades. Prueba de nuevo o trabaja con el Plan EDM del territorio.</p>';
-    return (n.web.desdeBase ? '<p class="hint">📚 Estas necesidades salieron de la <b>Base de Conocimiento</b> (guardadas de búsquedas anteriores de las dos aplicaciones): no hizo falta buscar en la web. <button type="button" class="btn btn-ghost btn-sm necWebForce">🔄 Buscar de nuevo en la web</button></p>' : "") +
+    return (n.web.desdeHub ? '<p class="hint">🏛️ Estas necesidades salieron del <b>Hub Central de Inteligencia Territorial</b> (la base central que alimentan los agentes del Hub): no hizo falta buscar en la web. <button type="button" class="btn btn-ghost btn-sm necWebForce">🔄 Buscar de nuevo en la web</button></p>' : "") +
+      (n.web.desdeBase ? '<p class="hint">📚 Estas necesidades salieron de la <b>Base de Conocimiento</b> (guardadas de búsquedas anteriores de las dos aplicaciones): no hizo falta buscar en la web. <button type="button" class="btn btn-ghost btn-sm necWebForce">🔄 Buscar de nuevo en la web</button></p>' : "") +
       '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " · municipio: <b>" + esc(n.web.municipio) + "</b> · " + n.web.lista.length + ' necesidades — VERIFICAR antes de presentar:</p>' +
       n.web.lista.map(function (w, i) {
         return '<div style="border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:10px;margin-top:8px">' +
-          "<b>" + esc(w.sector) + ".</b> " + (w.origen === "base" ? '<span class="hint" style="color:#9fe8b1">📚 Base de conocimiento' + (w.fecha ? " · guardada el " + esc(w.fecha) : "") + "</span> " : "") + esc(w.hallazgo) +
+          "<b>" + esc(w.sector) + ".</b> " + (w.origen === "hub" ? '<span class="hint" style="color:#a5d8ff">🏛️ Hub Central' + (w.fecha ? " · " + esc(w.fecha) : "") + "</span> " : "") + (w.origen === "base" ? '<span class="hint" style="color:#9fe8b1">📚 Base de conocimiento' + (w.fecha ? " · guardada el " + esc(w.fecha) : "") + "</span> " : "") + esc(w.hallazgo) +
           '<div class="hint" style="margin-top:4px">Fuente: ' + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener" style="color:#8ec5ff">' + esc(w.fuente) + "</a>" : esc(w.fuente)) +
           ' · <button type="button" class="btn btn-ghost btn-sm necWebAdd" data-i="' + i + '">➕ Añadir al plan</button></div></div>';
       }).join("");
@@ -1478,15 +1489,28 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       });
     }
     if (forzar) { enLaWeb([]); return; }
-    if (caja) caja.innerHTML = '<p class="hint">📚 Primero busco en la Base de Conocimiento lo ya guardado de ' + esc(m) + "…</p>";
-    desdeLaBase().then(function (base) {
-      if (base.length >= 5) {
-        n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: base, desdeBase: true };
-        guardar(); pintar();
-        toast("📚 " + base.length + " necesidades desde la Base de Conocimiento: no hizo falta buscar en la web");
-        return;
+    if (caja) caja.innerHTML = '<p class="hint">🏛️ Primero consulto el Hub Central y la Base de Conocimiento de ' + esc(m) + "…</p>";
+    hubCarencias(m, p).then(function (hub) {
+      if (hub.length >= 3) {
+        return desdeLaBase().then(function (base) {
+          var lista = hub.slice();
+          base.forEach(function (w) { if (lista.length < 8 && !lista.some(function (x) { return x.hallazgo === w.hallazgo; })) lista.push(w); });
+          n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: lista, desdeHub: true };
+          guardar(); pintar();
+          toast("🏛️ " + hub.length + " necesidades desde el Hub Central: no hizo falta buscar en la web");
+        });
       }
-      enLaWeb(base);
+      return desdeLaBase().then(function (base) {
+        var conHub = hub.slice();
+        base.forEach(function (w) { if (!conHub.some(function (x) { return x.hallazgo === w.hallazgo; })) conHub.push(w); });
+        if (conHub.length >= 5) {
+          n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: conHub.slice(0, 8), desdeBase: hub.length === 0, desdeHub: hub.length > 0 };
+          guardar(); pintar();
+          toast(hub.length ? "🏛️📚 Necesidades del Hub Central y la Base de Conocimiento: no hizo falta buscar en la web" : "📚 " + conHub.length + " necesidades desde la Base de Conocimiento: no hizo falta buscar en la web");
+          return;
+        }
+        enLaWeb(conHub);
+      });
     }).catch(function () { enLaWeb([]); });
   }
 
