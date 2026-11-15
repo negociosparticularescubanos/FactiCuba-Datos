@@ -860,13 +860,13 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   var activo = false;
 
   var CATALOGO = [
+    ["Producción de alimentos", "Fomento agrícola, ganadero y minindustrias", "hectáreas / entidades"],
     ["Agua y saneamiento", "Ampliación y reparación de acueducto y alcantarillado", "km de red"],
     ["Energía", "Electrificación, alumbrado y fuentes renovables", "puntos / MW"],
     ["Vivienda", "Construcción y rehabilitación de viviendas", "viviendas"],
     ["Vialidad y transporte", "Reparación de viales, puentes y transporte local", "km"],
     ["Salud", "Reparación y equipamiento de instituciones de salud", "instituciones"],
     ["Educación", "Reparación y equipamiento de escuelas", "escuelas"],
-    ["Producción de alimentos", "Fomento agrícola, ganadero y minindustrias", "hectáreas / entidades"],
     ["Turismo", "Infraestructura y servicios turísticos", "instalaciones"],
     ["Industria y comercio local", "Minindustrias y servicios a la población", "entidades"],
     ["Medio ambiente", "Saneamiento ambiental y áreas protegidas", "proyectos"],
@@ -953,6 +953,23 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       (neces ? '<div class="hint" style="margin-top:6px">📌 <b>Necesidades sin cubrir (Plan EDM):</b> ' + esc(neces) + "</div>" : "") +
       "</div>";
 
+    h += '<div class="card"><h3><span class="num">⭐</span>Prioridad en todos los municipios: la producción de alimentos</h3>' +
+      '<p class="sub">Por qué va primero, siempre:</p><div class="hint">' +
+      '1) Es prioridad estratégica del país: soberanía alimentaria y seguridad nutricional de la población (Ley 148/2022).<br>' +
+      '2) Los municipios dependen demasiado de alimentos traídos de fuera e importados.<br>' +
+      '3) Hay potencialidades locales subutilizadas: suelos, pesca, recursos hidráulicos, patios y organopónicos.<br>' +
+      '4) Producir cerca (0 km, circuitos cortos) baja precios, crea empleo e ingresos en el medio rural y asegura alimentos frescos.</div></div>';
+
+    if (n.municipio === "Ciénaga de Zapata") {
+      h += '<div class="card"><h3><span class="num">🌱</span>Estrategia municipal (EDM) — Línea 1: Producción de Alimentos</h3>' +
+        '<p class="sub">Política Local de Soberanía Alimentaria y Producción Sostenible de Alimentos. Objetivo: garantizar la soberanía alimentaria y la seguridad nutricional de la población del territorio con producción local sostenible.</p>' +
+        '<div class="hint"><b>Metas:</b> 2026-2027: +20% de producción en patios y organopónicos y 5 mercados agroecológicos locales · 2028-2029: 60% del consumo local de hortalizas, frutas y viandas con producción municipal · 2030: 80% de autoabastecimiento de alimentos básicos.<br>' +
+        '<b>Programas:</b> Del Patio al Plato (0 km) · Economía Social Solidaria «Viva mi Barrio» · Agroecología y agricultura sostenible.<br>' +
+        '<b>Proyectos PDL:</b> Finca Yatobá · La Cantera · Agro Vivo (en reformulación) · Finca Morejón (en formulación) · Finca Los Cocos (en formulación) · Caminos al Vuelo (en formulación) · Recuperación de suelos y manejo del agua (en formulación) · Puerto Pesquero Caletón (en formulación).<br>' +
+        '<b>Responsables:</b> Delegación de la Agricultura, Gobierno Municipal, ECOCIENZAP, CCS, empresas pesqueras.</div>' +
+        '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-primary" id="necEdm">🌱 Cargar las líneas de esta estrategia al plan</button></div></div>';
+    }
+
     h += '<div class="card"><h3><span class="num">🔎</span>Necesidades detectadas en la web</h3>' +
       '<p class="sub">Busco en la web las necesidades y carencias publicadas del municipio elegido y te muestro las más importantes con su fuente. Tú decides cuáles pasan al plan: nada entra solo.</p>' +
       '<div class="btn-row"><button type="button" class="btn btn-primary" id="necBuscar">🔎 Buscar necesidades del municipio</button></div>' +
@@ -965,7 +982,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       "</tr></thead><tbody>";
     n.filas.forEach(function (f, i) {
       h += '<tr data-fila="' + i + '">' +
-        '<td><input class="inp necIn" data-c="programa" value="' + esc(f.programa) + '"></td>' +
+        '<td>' + (f.programa === "Producción de alimentos" ? '<span title="Prioridad en todos los municipios">⭐</span> ' : '') + '<input class="inp necIn" data-c="programa" value="' + esc(f.programa) + '"></td>' +
         '<td><input class="inp necIn" data-c="linea" value="' + esc(f.linea) + '"></td>' +
         '<td><input class="inp necIn" data-c="unidad" value="' + esc(f.unidad) + '" style="max-width:90px"></td>' +
         '<td><input class="inp necIn" data-c="cantidad" type="number" min="0" step="any" value="' + esc(f.cantidad) + '" style="max-width:90px"></td>' +
@@ -1008,6 +1025,18 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         n.filas.splice(i, 1); guardar(); pintar();
       });
     });
+    var bEdm = document.getElementById("necEdm");
+    if (bEdm) bEdm.addEventListener("click", function () {
+      var n2 = nec(); var nuevas = 0;
+      LINEAS_EDM_CIENAGA.forEach(function (L) {
+        if (!n2.filas.some(function (f) { return f.linea === L[0]; })) {
+          n2.filas.push({ programa: "Producción de alimentos", linea: L[0], unidad: L[1], cantidad: L[2], costoCUP: "", costoUSD: "", dist: [20, 20, 20, 15, 15, 10] });
+          nuevas++;
+        }
+      });
+      guardar(); pintar();
+      toast(nuevas ? "🌱 " + nuevas + " líneas de la estrategia añadidas al plan" : "Esas líneas ya están en el plan");
+    });
     var bBuscar = document.getElementById("necBuscar");
     if (bBuscar) bBuscar.addEventListener("click", buscarWeb);
     document.querySelectorAll(".necWebAdd").forEach(function (b) {
@@ -1029,6 +1058,21 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     });
   }
 
+  var LINEAS_EDM_CIENAGA = [
+    ["Programa Del Patio al Plato — producción local 0 km (patios y organopónicos)", "patios / organopónicos", ""],
+    ["Mercados agroecológicos locales (meta 2026-2027)", "mercados", "5"],
+    ["Centros de procesamiento de alimentos", "centros", ""],
+    ["Programa de agroecología y agricultura sostenible", "programa", ""],
+    ["Programa Economía Social Solidaria «Viva mi Barrio»", "programa", ""],
+    ["PDL Finca Yatobá", "proyecto", ""],
+    ["PDL La Cantera", "proyecto", ""],
+    ["PDL Agro Vivo (en reformulación)", "proyecto", ""],
+    ["PDL Finca Morejón (en formulación)", "proyecto", ""],
+    ["PDL Finca Los Cocos (en formulación)", "proyecto", ""],
+    ["PDL Caminos al Vuelo (en formulación)", "proyecto", ""],
+    ["Proyecto de recuperación de suelos y manejo del agua (en formulación)", "proyecto", ""],
+    ["PDL Puerto Pesquero de interés local Caletón (en formulación)", "proyecto", ""]
+  ];
   var URL_BUSCAR = "https://script.google.com/macros/s/AKfycbw02a9gP8DimXUlm9HP5Lg6ZAD3r_y-A8xSnGsSj6YN02WBzb59e4_Ocl2INDRIDcCu/exec?ruta=buscar";
   var SECTORES = [
     ["Agua y saneamiento", /agua|acueducto|alcantarillado|saneamiento|potabilizadora|salidero/i],
@@ -1093,7 +1137,11 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
             porSector[s[0]].push({ sector: s[0], hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "" });
         });
       });
-      var sectores = Object.keys(porSector).sort(function (a, b) { return porSector[b].length - porSector[a].length; });
+      var sectores = Object.keys(porSector).sort(function (a, b) {
+        if (a === "Producción de alimentos") return -1;
+        if (b === "Producción de alimentos") return 1;
+        return porSector[b].length - porSector[a].length;
+      });
       var lista = [];
       sectores.forEach(function (s) { if (porSector[s][0]) lista.push(porSector[s][0]); });
       sectores.forEach(function (s) { for (var i = 1; i < porSector[s].length && lista.length < 8; i++) lista.push(porSector[s][i]); });
