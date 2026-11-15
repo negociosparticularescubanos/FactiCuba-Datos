@@ -1097,6 +1097,13 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     if (typeof data === "undefined") return null;
     if (!data.necesidades) data.necesidades = defecto();
     if (!Array.isArray(data.necesidades.filas)) data.necesidades.filas = defecto().filas;
+    // Limpieza única de búsquedas guardadas con la versión anterior: se quitan las necesidades que no corresponden a su tema o a su municipio.
+    var wb = data.necesidades.web;
+    if (wb && Array.isArray(wb.lista) && !wb.limpia) {
+      var mun = wb.municipio || data.necesidades.municipio || "";
+      wb.lista = wb.lista.filter(function (x) { return x && x.hallazgo && sectorValido(String(x.hallazgo), mun) === x.sector; });
+      wb.limpia = 1;
+    }
     return data.necesidades;
   }
   function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; }
@@ -1319,18 +1326,61 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     kbPost({ accion: "guardar_estudio", estudio: { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: n.provincia, municipio: n.municipio, proyecto: "Plan de inversiones 2027-2032 — " + (n.municipio || ""), resumen: tipo, total_cup: Math.round(c), total_usd: Math.round(u), nota: tipo } });
   }
   var SECTORES = [
-    ["Agua y saneamiento", /agua|acueducto|alcantarillado|saneamiento|potabilizadora|salidero/i],
-    ["Energía", /electric|apag[oó]n|alumbrado|energ[ií]a|paneles solares|termoel[eé]ctrica/i],
-    ["Vivienda", /vivienda|habitacional|derrumbe|albergue/i],
-    ["Vialidad y transporte", /vial|carretera|puente|transporte|[oó]mnibus|baches/i],
-    ["Salud", /salud|hospital|policl[ií]nico|consultorio|medicamento/i],
-    ["Educación", /escuela|c[ií]rculo infantil|educaci[oó]n|maestros/i],
-    ["Producción de alimentos", /alimento|agricultur|producci[oó]n|cultivo|ganader|abasto|vianda/i],
-    ["Turismo", /turismo|tur[ií]st|hotel|visitantes/i],
-    ["Industria y comercio local", /industria|comercio|minindustria|f[aá]brica|empleo/i],
-    ["Medio ambiente", /medio ambiente|contaminaci[oó]n|residuales|manglar|erosi[oó]n/i],
-    ["Comunicaciones", /internet|cobertura|telefon[ií]a|comunicaciones|etecsa/i]
+    ["Agua y saneamiento", /\b(agua|acueducto\w*|alcantarillad\w*|saneamiento|potabilizadora\w*|salidero\w*|cisterna\w*|hidraulic\w*)\b/],
+    ["Energía", /\b(electric\w*|apagon\w*|alumbrado|energia|paneles solares|termoelectrica\w*|fotovoltaic\w*|transformador\w*)\b/],
+    ["Vivienda", /\b(vivienda\w*|habitacional\w*|derrumbe\w*|albergue\w*|techo\w*)\b/],
+    ["Vialidad y transporte", /\b(vial\w*|carretera\w*|puente\w*|transporte\w*|omnibus|baches|calle\w*|terraplen\w*|camino\w*|ferrocarril|parque automotor)\b/],
+    ["Salud", /\b(salud|hospital\w*|policlinic\w*|consultorio\w*|medicamento\w*|medico\w*|ambulancia\w*|farmacia\w*)\b/],
+    ["Educación", /\b(escuela\w*|circulo\w* infantil\w*|educacion|maestro\w*|docente\w*|aula\w*|universidad\w*|politecnico\w*)\b/],
+    ["Producción de alimentos", /\b(alimento\w*|alimentaci\w*|agricola\w*|agricultur\w*|agropecuari\w*|cultivo\w*|siembra\w*|cosecha\w*|ganader\w*|vianda\w*|hortaliza\w*|vegetales|frutas?|leche|carne|huevo\w*|arroz|frijol\w*|organopon\w*|huerto\w*|patio\w*|campesin\w*|acopio|autoabastecimiento|porcin\w*|pesca|pesquer\w*|avicola\w*)\b/],
+    ["Turismo", /\b(turismo|turistic\w*|turista\w*|hotel\w*|hostal\w*|visitante\w*|playa\w*|cayo\w*|alojamiento\w*)\b/],
+    ["Industria y comercio local", /\b(industria\w*|comercio|comercial\w*|minindustria|fabrica\w*|empleo\w*|desempleo|mipyme\w*|tienda\w*|taller\w*)\b/],
+    ["Medio ambiente", /\b(medio ambiente|medioambiental\w*|contaminaci\w*|residuales|manglar\w*|erosion|deforestaci\w*|reforestaci\w*|desechos|vertedero\w*|basura|salinizaci\w*|sequia)\b/],
+    ["Comunicaciones", /\b(internet|telefon\w*|comunicaciones|etecsa|conectividad|wifi|datos moviles|senal movil)\b/]
   ];
+  // --- Precisión por tema y por lugar (v2) ---
+  function norm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+  var NECE = /\b(falta\w*|deficit\w*|necesid\w*|problem\w*|deterior\w*|escasez|carencia\w*|insuficien\w*|afectaci\w*|afectad\w*|mal estado|sin acceso|limitaci\w*|ausencia|baja\w* producci\w*|dependencia|no cuenta\w*|requiere\w*|reparaci\w*)\b/;
+  // Cada frase se asigna a UN solo sector (el que más palabras propias reúne). Si hay empate o ninguno, se descarta: es mejor no mostrarla que mostrarla en el tema equivocado.
+  function sectorDeFrase(f) {
+    var nf = norm(f), mejor = null, mejorN = 0, empate = false;
+    SECTORES.forEach(function (sec) {
+      var n = (nf.match(new RegExp(sec[1].source, "g")) || []).length;
+      if (n > mejorN) { mejor = sec[0]; mejorN = n; empate = false; } else if (n === mejorN && n > 0) { empate = true; }
+    });
+    return (mejor && !empate) ? mejor : null;
+  }
+  var _otrosCache = {};
+  function otrosMunicipios(m) {
+    var mm = norm(m);
+    if (_otrosCache[mm]) return _otrosCache[mm];
+    var out = [];
+    try {
+      Object.keys(PROVINCIAS).forEach(function (pv) {
+        var v = PROVINCIAS[pv], lista = Array.isArray(v) ? v : (v && typeof v === "object" ? Object.keys(v) : []);
+        lista.forEach(function (x) {
+          var nx = norm(x);
+          if (nx.length > 4 && nx !== mm && mm.indexOf(nx) < 0 && nx.indexOf(mm) < 0 && out.indexOf(nx) < 0) out.push(nx);
+        });
+      });
+    } catch (e) {}
+    return (_otrosCache[mm] = out);
+  }
+  // La frase vale si nombra al municipio elegido (nombre completo o su primera parte, p. ej. «Ciénaga»); si nombra a OTRO municipio, se descarta; si no nombra ninguno, vale solo cuando el artículo completo trata del municipio elegido.
+  function aliasLugar(m) {
+    var nm = norm(m).trim(), a = [nm], pre = nm.split(" de ")[0].trim();
+    if (pre !== nm && pre.length >= 6) a.push(pre);
+    return a;
+  }
+  function menciona(txt, al) { for (var i = 0; i < al.length; i++) { if (al[i].length >= 3 && txt.indexOf(al[i]) >= 0) return true; } return false; }
+  function lugarOk(frase, contexto, m) {
+    var nf = norm(frase), al = aliasLugar(m);
+    if (al[0].length < 3 || menciona(nf, al)) return true;
+    var otros = otrosMunicipios(m);
+    for (var i = 0; i < otros.length; i++) { if (nf.indexOf(otros[i]) >= 0) return false; }
+    return contexto ? menciona(norm(contexto), al) : true;
+  }
+  function sectorValido(frase, m) { return lugarOk(frase, "", m) ? sectorDeFrase(frase) : null; }
   function htmlWeb(n) {
     if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón: la página busca PRIMERO en la Base de Conocimiento y solo va a la web si allí no hay suficiente.</p>';
     if (!n.web.lista.length) return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " para <b>" + esc(n.web.municipio) + '</b>: la web devolvió poca evidencia clara de necesidades. Prueba de nuevo o trabaja con el Plan EDM del territorio.</p>';
@@ -1353,9 +1403,10 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         var vistos = {}, lista = [];
         (refs || []).forEach(function (r) {
           var frase = String(r.dato || "").trim();
-          if (!r.tema || frase.length < 10 || vistos[frase]) return;
+          var sv = sectorValido(frase, m);
+          if (!sv || frase.length < 10 || vistos[frase]) return;
           vistos[frase] = 1;
-          lista.push({ sector: String(r.tema), hallazgo: frase, fuente: String(r.fuente || "Base de conocimiento"), url: String(r.url || ""), origen: "base", fecha: String(r.fecha || "").slice(0, 10) });
+          lista.push({ sector: sv, hallazgo: frase, fuente: String(r.fuente || "Base de conocimiento"), url: String(r.url || ""), origen: "base", fecha: String(r.fecha || "").slice(0, 10) });
         });
         lista.sort(function (a, b) {
           if (a.sector === "Producción de alimentos") return -1;
@@ -1371,6 +1422,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         "necesidades carencias déficit " + m + " " + p + " Cuba",
         "problemas agua vivienda electricidad " + m + " Cuba",
         "desarrollo local " + m + " necesidades inversión programas",
+        "producción de alimentos agricultura " + m + " " + p + " problemas déficit",
         m + " " + p + " abasto viales transporte salud problemas población"
       ];
       function consultar(q) {
@@ -1389,15 +1441,17 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         var porSector = {};
         items.forEach(function (it) {
           var texto = String(it.extracto || it.texto || it.titulo || "");
-          var frases = texto.split(/(?<=[.!?])\s+/);
-          SECTORES.forEach(function (sec) {
-            if (!sec[1].test(texto)) return;
-            var frase = frases.filter(function (f) { return sec[1].test(f) && /falta|d[eé]ficit|necesid|problem|deterior|escasez|carencia|insuficien|demanda|afectac/i.test(f); })[0] || frases.filter(function (f) { return sec[1].test(f); })[0] || texto.slice(0, 200);
-            frase = frase.trim().slice(0, 220);
-            if (frase.length < 25) return;
-            porSector[sec[0]] = porSector[sec[0]] || [];
-            if (!porSector[sec[0]].some(function (x) { return x.hallazgo === frase; }))
-              porSector[sec[0]].push({ sector: sec[0], hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "", origen: "web" });
+          var contexto = (it.titulo || "") + " " + texto + " " + (it.url || "");
+          texto.split(/(?<=[.!?])\s+/).forEach(function (f) {
+            f = f.trim();
+            if (f.length < 30 || !NECE.test(norm(f))) return;
+            if (!lugarOk(f, contexto, m)) return;
+            var sec = sectorDeFrase(f);
+            if (!sec) return;
+            var frase = f.slice(0, 240);
+            porSector[sec] = porSector[sec] || [];
+            if (!porSector[sec].some(function (x) { return x.hallazgo === frase; }))
+              porSector[sec].push({ sector: sec, hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "", origen: "web" });
           });
         });
         var sectores = Object.keys(porSector).sort(function (a, b) {

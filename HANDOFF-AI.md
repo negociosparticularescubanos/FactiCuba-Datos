@@ -121,3 +121,10 @@ cada dato en una base de Google Sheets de la cuenta de negocios.
 - Guía «Cómo empezar en 4 pasos» en el panel; las imágenes que no existan (p. ej. `src/images/fondo-cuba.jpg`) se ocultan sin icono roto.
 - Pendiente de datos: la carpeta `src/images/` no venía en el ZIP; si se tiene `fondo-cuba.jpg`, colocarla en `src/images/`.
 - Regla de construcción: igual que los demás módulos, para actualizar este hay que retirar su bloque `<style id="fc-pulido-css">` y `<script id="fc-pulido-js">` antes de añadir la versión nueva.
+
+## Necesidades web: precisión por tema y por municipio (fcNecesidades v6)
+
+- Problema reportado: en «Producción de alimentos» aparecían frases de transporte. Causas: la palabra «producción» y «abasto» activaban alimentos en casi cualquier texto; se clasificaba el artículo entero y, si no había frase adecuada, se mostraban los primeros 200 caracteres; no se comprobaba que el texto hablara del municipio elegido.
+- Ahora: (1) cada FRASE se asigna a un solo sector, el que más palabras propias reúne; con empate o sin coincidencia se descarta (mejor no mostrar que mostrar mal); (2) palabras clave más estrictas y sin tildes (agua, vivienda, vialidad…); alimentos ya no se activa por «producción»; (3) la frase debe indicar una carencia (falta, déficit, deterioro…); (4) filtro de lugar: la frase vale si nombra al municipio elegido (o su primera parte, p. ej. «Ciénaga»); si nombra a OTRO municipio se descarta; si no nombra ninguno, solo vale si el artículo trata del municipio elegido; (5) las entradas de la Base de Conocimiento se revalidan al leerlas (se reclasifican o se descartan); (6) limpieza única de búsquedas ya guardadas en el equipo; (7) se añadió una consulta específica de alimentos.
+- Efecto esperado: salen MENOS necesidades, pero correctas. Si la web no ofrece evidencia clara del municipio, la pestaña lo dice en lugar de rellenar con otros temas.
+- Arneses: nuevo `fc-necesidades-sector-smoke.js` (9/9); se actualizaron los datos simulados de `fc-necesidades-web-smoke.js` y `fc-conocimiento-datos-smoke.js` para que nombren al municipio, como hace una búsqueda real. Los 11 arneses pasan.

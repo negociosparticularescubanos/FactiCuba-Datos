@@ -7,12 +7,12 @@ const ok = (n, c) => { console.log((c ? '✔' : '✘ FALLO') + ' ' + n); if (!c)
 const espera = ms => new Promise(r => setTimeout(r, ms));
 
 const ITEMS = [
-  { titulo: 'Agua en Ciénaga', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/agua', extracto: 'El acueducto presenta un déficit serio y la población reclama problemas con el abasto de agua potable en varias comunidades del municipio.' },
-  { titulo: 'Viviendas', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/viv', extracto: 'El fondo habitacional muestra deterioro: cientos de viviendas necesitan rehabilitación tras años sin mantenimiento y hay déficit de nuevas construcciones.' },
-  { titulo: 'Apagones', fuente: 'Wikipedia', url: 'https://ejemplo.cu/elec', extracto: 'Los apagones afectan el servicio eléctrico y el alumbrado público es insuficiente en los asentamientos rurales del territorio.' },
-  { titulo: 'Viales', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/vial', extracto: 'Las carreteras y viales de acceso tienen un marcado deterioro y el transporte público es insuficiente para la demanda de la población.' },
-  { titulo: 'Salud', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/salud', extracto: 'El policlínico municipal necesita reparación y hay carencia de medicamentos y equipamiento en los consultorios de salud.' },
-  { titulo: 'Alimentos', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/agr', extracto: 'La producción de alimentos es insuficiente: la agricultura local no cubre la demanda y el abasto a la población presenta problemas.' }
+  { titulo: 'Agua en Ciénaga', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/agua', extracto: 'En Ciénaga de Zapata el acueducto presenta un déficit serio y la población reclama problemas con el abasto de agua potable en varias comunidades del municipio.' },
+  { titulo: 'Viviendas', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/viv', extracto: 'En Ciénaga de Zapata el fondo habitacional muestra deterioro: cientos de viviendas necesitan rehabilitación tras años sin mantenimiento y hay déficit de nuevas construcciones.' },
+  { titulo: 'Apagones', fuente: 'Wikipedia', url: 'https://ejemplo.cu/elec', extracto: 'En Ciénaga de Zapata los apagones afectan el servicio eléctrico y el alumbrado público es insuficiente en los asentamientos rurales del territorio.' },
+  { titulo: 'Viales', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/vial', extracto: 'En Ciénaga de Zapata las carreteras y viales de acceso tienen un marcado deterioro y el transporte público es insuficiente para la demanda de la población.' },
+  { titulo: 'Salud', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/salud', extracto: 'En Ciénaga de Zapata el policlínico municipal necesita reparación y hay carencia de medicamentos y equipamiento en los consultorios de salud.' },
+  { titulo: 'Alimentos', fuente: 'Web (DuckDuckGo)', url: 'https://ejemplo.cu/agr', extracto: 'En Ciénaga de Zapata la producción de alimentos es insuficiente: la agricultura local no cubre la demanda y el abasto a la población presenta problemas.' }
 ];
 const dom = new JSDOM(html, {
   url: 'https://negociosparticularescubanos.github.io/FactiCuba-Datos/',
