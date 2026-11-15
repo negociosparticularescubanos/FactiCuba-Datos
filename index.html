@@ -848,6 +848,159 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
 })();
 </script>
 <script>
+/* ============ fcEstrategia: «Estrategia Viva» — portada del municipio ============
+   La página como Estrategia de Desarrollo Municipal VIVA: al introducir los datos
+   de los indicadores, las cifras se actualizan solas (avance %, totales, tarjetas).
+   - Tarjetas vivas desde las plantillas (ONEI) y el plan de necesidades.
+   - Indicadores de la EDM editables: línea base, meta, valor actual → avance %.
+   - Alimentos primero, como manda la prioridad fijada por Leonardo. */
+(function () {
+  var activo = false;
+
+  var SEMILLA = [
+    ["Autoabastecimiento de alimentos básicos", "%", "", "80", "", "2030"],
+    ["Cobertura local de hortalizas, frutas y viandas", "%", "", "60", "", "2029"],
+    ["Aumento de producción en patios y organopónicos", "%", "", "20", "", "2027"],
+    ["Mercados agroecológicos locales en funcionamiento", "mercados", "", "5", "", "2027"],
+    ["Población con abasto de agua regular", "%", "", "100", "", "2030"],
+    ["Viviendas construidas o reparadas", "viviendas", "", "", "", "2030"],
+    ["Empleos creados por los proyectos del plan", "empleos", "", "", "", "2030"]
+  ];
+  function defecto() {
+    return { indicadores: SEMILLA.map(function (x) { return { nombre: x[0], unidad: x[1], base: x[2], meta: x[3], actual: x[4], ano: x[5] }; }) };
+  }
+  function est() {
+    if (typeof data === "undefined") return null;
+    if (!data.estrategia) data.estrategia = defecto();
+    if (!Array.isArray(data.estrategia.indicadores)) data.estrategia.indicadores = defecto().indicadores;
+    return data.estrategia;
+  }
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; }
+  function hay(v) { return v !== "" && v != null && !isNaN(parseFloat(v)); }
+  function fmt(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 0 }) : "—"; }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+  function guardar() { if (typeof persist === "function") persist(); }
+  function primerNumero(texto) {
+    var grupos = String(texto || "").match(/\d[\d. ]*\d|\d/g) || [];
+    var mayor = 0;
+    grupos.forEach(function (g) { var v = parseInt(g.replace(/[^\d]/g, ""), 10); if (v > mayor) mayor = v; });
+    return mayor;
+  }
+  function avance(ind) {
+    if (!hay(ind.actual) || !hay(ind.meta)) return null;
+    var b = hay(ind.base) ? num(ind.base) : 0, m = num(ind.meta), a = num(ind.actual);
+    if (m === b) return null;
+    return Math.max(0, Math.min(100, Math.round((a - b) / (m - b) * 100)));
+  }
+
+  /* ---------- botón de pestaña: la primera (portada del municipio) ---------- */
+  var primerBtn = document.querySelector(".tab");
+  if (!primerBtn) return;
+  var btn = document.createElement("button");
+  btn.className = "tab"; btn.type = "button"; btn.id = "tabEstrategia";
+  btn.innerHTML = "<b>🏛️ Estrategia Viva</b><span>la EDM del municipio, actualizada sola</span>";
+  primerBtn.parentNode.insertBefore(btn, primerBtn);
+  btn.addEventListener("click", function () {
+    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    activo = true; pintar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.querySelectorAll(".tab").forEach(function (b) {
+    if (b !== btn) b.addEventListener("click", function () { activo = false; btn.classList.remove("active"); });
+  });
+  var btnVaciar = document.getElementById("clearBtn");
+  if (btnVaciar) btnVaciar.addEventListener("click", function (e) {
+    if (activo) { e.stopImmediatePropagation(); toast("Estás en Estrategia Viva: edita los indicadores en su tabla."); }
+  }, true);
+
+  /* ---------- cifras vivas desde el resto de la página ---------- */
+  function cifras() {
+    var muni = (data.plan && data.plan.municipio) || (data.proyecto && data.proyecto.municipio) || (data.necesidades && data.necesidades.municipio) || "";
+    var prov = (data.plan && data.plan.provincia) || (data.proyecto && data.proyecto.provincia) || (data.necesidades && data.necesidades.provincia) || "";
+    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
+    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
+    var totCUP = 0, totUSD = 0, alimCUP = 0, alimUSD = 0, lineas = 0;
+    if (data.necesidades && Array.isArray(data.necesidades.filas)) {
+      data.necesidades.filas.forEach(function (f) {
+        var c = num(f.cantidad); if (!c) return;
+        var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
+        totCUP += tc; totUSD += tu; lineas++;
+        if (String(f.programa || "").indexOf("Producción de alimentos") === 0) { alimCUP += tc; alimUSD += tu; }
+      });
+    }
+    var halladas = (data.necesidades && data.necesidades.web && data.necesidades.web.lista) ? data.necesidades.web.lista.length : 0;
+    return { muni: muni, prov: prov, pob: pob, hog: hog, totCUP: totCUP, totUSD: totUSD, alimCUP: alimCUP, alimUSD: alimUSD, lineas: lineas, halladas: halladas };
+  }
+
+  function pintar() {
+    var e = est(); if (!e) return;
+    var c = cifras();
+    var tarjeta = function (titulo, valor, nota) {
+      return '<div style="flex:1 1 150px;border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:12px;min-width:140px"><div class="hint">' + titulo + '</div><div style="font-size:20px;font-weight:800;margin:4px 0">' + valor + '</div><div class="hint">' + nota + "</div></div>";
+    };
+    var h = '<div class="card"><h3><span class="num">🏛️</span>Estrategia de Desarrollo Municipal — ' + (c.muni ? esc(c.muni) : "tu municipio") + (c.prov ? " (" + esc(c.prov) + ")" : "") + "</h3>" +
+      '<p class="sub">Esta página ES la estrategia viva del municipio: cada dato que escribas en las plantillas, en el plan de necesidades o en los indicadores actualiza las cifras de aquí y de los informes, sin volver a teclear nada.</p>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">' +
+      tarjeta("Población (ONEI)", fmt(c.pob), c.hog ? fmt(c.hog) + " hogares" : "completa la plantilla ONEI") +
+      tarjeta("Inversión del plan 2027-2032", fmt(c.totCUP) + " CUP", fmt(c.totUSD) + " USD · " + c.lineas + " líneas con cantidad") +
+      tarjeta("⭐ Alimentos primero", fmt(c.alimCUP) + " CUP", fmt(c.alimUSD) + " USD del plan") +
+      tarjeta("Necesidades halladas en la web", c.halladas ? String(c.halladas) : "—", "pestaña Necesidades") +
+      "</div></div>";
+
+    h += '<div class="card"><h3><span class="num">📈</span>Indicadores de la estrategia</h3>' +
+      '<p class="sub">Escribe el valor actual de cada indicador y el avance hacia la meta se calcula solo. Las metas sembradas son las de la Línea 1 de alimentos y las básicas de todo municipio: ajústalas a tu territorio.</p>' +
+      '<div style="overflow-x:auto"><table id="estTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px"><thead><tr>' +
+      ["Indicador", "Unidad", "Línea base", "Meta", "Año meta", "Valor actual", "Avance", ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
+      "</tr></thead><tbody>";
+    e.indicadores.forEach(function (ind, i) {
+      var av = avance(ind);
+      h += '<tr data-ind="' + i + '">' +
+        '<td><input class="inp estIn" data-c="nombre" value="' + esc(ind.nombre) + '"></td>' +
+        '<td><input class="inp estIn" data-c="unidad" value="' + esc(ind.unidad) + '" style="max-width:90px"></td>' +
+        '<td><input class="inp estIn" data-c="base" type="number" step="any" value="' + esc(ind.base) + '" style="max-width:80px"></td>' +
+        '<td><input class="inp estIn" data-c="meta" type="number" step="any" value="' + esc(ind.meta) + '" style="max-width:80px"></td>' +
+        '<td><input class="inp estIn" data-c="ano" value="' + esc(ind.ano) + '" style="max-width:70px"></td>' +
+        '<td><input class="inp estIn" data-c="actual" type="number" step="any" value="' + esc(ind.actual) + '" style="max-width:90px"></td>' +
+        '<td style="min-width:130px"><div style="background:rgba(255,255,255,.12);border-radius:99px;height:12px;overflow:hidden"><div class="estBar" style="height:100%;width:' + (av == null ? 0 : av) + '%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div><span class="estPct hint">' + (av == null ? "sin dato" : av + " %") + "</span></td>" +
+        '<td><button type="button" class="btn btn-ghost btn-sm estDel" title="Quitar indicador">✕</button></td></tr>';
+    });
+    h += "</tbody></table></div>" +
+      '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-ghost" id="estAdd">➕ Añadir indicador</button></div>' +
+      '<p class="hint" style="margin-top:8px">El estudio de factibilidad y el informe para el pueblo (pestaña Necesidades) se generan siempre con estos datos del momento: si cambia un indicador o una cifra del plan, los informes salen actualizados.</p></div>';
+
+    document.getElementById("formCtn").innerHTML = h;
+    cablear();
+  }
+
+  function cablear() {
+    var e = est();
+    document.querySelectorAll("#estTabla tbody tr").forEach(function (tr) {
+      var i = +tr.getAttribute("data-ind");
+      tr.querySelectorAll(".estIn").forEach(function (inp) {
+        inp.addEventListener("input", function () {
+          e.indicadores[i][inp.getAttribute("data-c")] = inp.value;
+          guardar();
+          var av = avance(e.indicadores[i]);
+          var bar = tr.querySelector(".estBar"), pct = tr.querySelector(".estPct");
+          if (bar) bar.style.width = (av == null ? 0 : av) + "%";
+          if (pct) pct.textContent = (av == null ? "sin dato" : av + " %");
+        });
+      });
+      tr.querySelector(".estDel").addEventListener("click", function () {
+        if (!confirm("¿Quitar este indicador?")) return;
+        e.indicadores.splice(i, 1); guardar(); pintar();
+      });
+    });
+    document.getElementById("estAdd").addEventListener("click", function () {
+      e.indicadores.push({ nombre: "", unidad: "", base: "", meta: "", actual: "", ano: "" });
+      guardar(); pintar();
+    });
+  }
+})();
+</script>
+
+<script>
 /* ============ fcNecesidades: pestaña «Necesidades del Municipio» ============
    Plan de inversiones 2027-2032 en CUP y USD, calculado EN VIVO.
    - Se elige provincia y municipio (se precarga desde la plantilla del Plan).
@@ -1049,7 +1202,10 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       toast(nuevas ? "🌱 " + nuevas + " líneas de la estrategia añadidas al plan" : "Esas líneas ya están en el plan");
     });
     var bBuscar = document.getElementById("necBuscar");
-    if (bBuscar) bBuscar.addEventListener("click", buscarWeb);
+    if (bBuscar) bBuscar.addEventListener("click", function () { buscarWeb(false); });
+    document.querySelectorAll(".necWebForce").forEach(function (b) {
+      b.addEventListener("click", function () { buscarWeb(true); });
+    });
     document.querySelectorAll(".necWebAdd").forEach(function (b) {
       b.addEventListener("click", function () {
         var i = +b.getAttribute("data-i"); var w = (nec().web && nec().web.lista) || [];
@@ -1085,6 +1241,24 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     ["PDL Puerto Pesquero de interés local Caletón (en formulación)", "proyecto", ""]
   ];
   var URL_BUSCAR = "https://script.google.com/macros/s/AKfycbw02a9gP8DimXUlm9HP5Lg6ZAD3r_y-A8xSnGsSj6YN02WBzb59e4_Ocl2INDRIDcCu/exec?ruta=buscar";
+  var URL_KB = "https://script.google.com/macros/s/AKfycbzDmBLwgQj0Mx-YKryieWePKs7jFO29FX5D1Mn3KLj9ICnkSUsJwztwtNzUHj6e_5PJ6g/exec";
+  function kbRefs(municipio) {
+    return fetch(URL_KB + "?accion=refs&municipio=" + encodeURIComponent(municipio)).then(function (r) { return r.json(); })
+      .then(function (d) { return (d && d.refs) || []; }).catch(function () { return []; });
+  }
+  function kbPost(obj) {
+    return fetch(URL_KB, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(obj) }).then(function (r) { return r.text(); }).catch(function () { return null; });
+  }
+  function kbGuardarRefs(lista, n) {
+    if (!lista.length) return;
+    kbPost({ accion: "guardar_refs", refs: lista.map(function (w) { return { app: "FactiCuba-Datos", provincia: n.provincia, municipio: n.municipio, tema: w.sector, dato: w.hallazgo, fuente: w.fuente, url: w.url }; }) });
+  }
+  function kbGuardarEstudio(tipo) {
+    var n = nec(); if (!n) return;
+    var c = 0, u = 0;
+    (n.filas || []).forEach(function (f) { var q = num(f.cantidad); c += q * num(f.costoCUP); u += q * num(f.costoUSD); });
+    kbPost({ accion: "guardar_estudio", estudio: { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: n.provincia, municipio: n.municipio, proyecto: "Plan de inversiones 2027-2032 — " + (n.municipio || ""), resumen: tipo, total_cup: Math.round(c), total_usd: Math.round(u), nota: tipo } });
+  }
   var SECTORES = [
     ["Agua y saneamiento", /agua|acueducto|alcantarillado|saneamiento|potabilizadora|salidero/i],
     ["Energía", /electric|apag[oó]n|alumbrado|energ[ií]a|paneles solares|termoel[eé]ctrica/i],
@@ -1099,67 +1273,101 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     ["Comunicaciones", /internet|cobertura|telefon[ií]a|comunicaciones|etecsa/i]
   ];
   function htmlWeb(n) {
-    if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón.</p>';
+    if (!n.web) return '<p class="hint">Todavía sin buscar. Elige provincia y municipio y pulsa el botón: la página busca PRIMERO en la Base de Conocimiento y solo va a la web si allí no hay suficiente.</p>';
     if (!n.web.lista.length) return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " para <b>" + esc(n.web.municipio) + '</b>: la web devolvió poca evidencia clara de necesidades. Prueba de nuevo o trabaja con el Plan EDM del territorio.</p>';
-    return '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " · municipio: <b>" + esc(n.web.municipio) + "</b> · " + n.web.lista.length + ' necesidades con evidencia web — VERIFICAR antes de presentar:</p>' +
+    return (n.web.desdeBase ? '<p class="hint">📚 Estas necesidades salieron de la <b>Base de Conocimiento</b> (guardadas de búsquedas anteriores de las dos aplicaciones): no hizo falta buscar en la web. <button type="button" class="btn btn-ghost btn-sm necWebForce">🔄 Buscar de nuevo en la web</button></p>' : "") +
+      '<p class="hint">Búsqueda del ' + esc(n.web.fecha) + " · municipio: <b>" + esc(n.web.municipio) + "</b> · " + n.web.lista.length + ' necesidades — VERIFICAR antes de presentar:</p>' +
       n.web.lista.map(function (w, i) {
         return '<div style="border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:10px;margin-top:8px">' +
-          "<b>" + esc(w.sector) + ".</b> " + esc(w.hallazgo) +
+          "<b>" + esc(w.sector) + ".</b> " + (w.origen === "base" ? '<span class="hint" style="color:#9fe8b1">📚 Base de conocimiento' + (w.fecha ? " · guardada el " + esc(w.fecha) : "") + "</span> " : "") + esc(w.hallazgo) +
           '<div class="hint" style="margin-top:4px">Fuente: ' + (w.url ? '<a href="' + esc(w.url) + '" target="_blank" rel="noopener" style="color:#8ec5ff">' + esc(w.fuente) + "</a>" : esc(w.fuente)) +
           ' · <button type="button" class="btn btn-ghost btn-sm necWebAdd" data-i="' + i + '">➕ Añadir al plan</button></div></div>';
       }).join("");
   }
-  function buscarWeb() {
+  function buscarWeb(forzar) {
     var n = nec();
     if (!n.municipio) { toast("Primero elige provincia y municipio."); return; }
     var caja = document.getElementById("necWeb");
-    if (caja) caja.innerHTML = '<p class="hint">🔎 Buscando en la web las necesidades de ' + esc(n.municipio) + "… (puede tardar unos segundos)</p>";
     var m = n.municipio, p = n.provincia;
-    var qs = [
-      "necesidades carencias déficit " + m + " " + p + " Cuba",
-      "problemas agua vivienda electricidad " + m + " Cuba",
-      "desarrollo local " + m + " necesidades inversión programas",
-      m + " " + p + " abasto viales transporte salud problemas población"
-    ];
-    function consultar(q) {
-      return fetch(URL_BUSCAR + "&q=" + encodeURIComponent(q)).then(function (r) { return r.json(); })
-        .then(function (d) { return (d && d.items) || []; }).catch(function () { return []; });
-    }
-    Promise.all(qs.map(consultar)).then(function (listas) {
-      var items = [];
-      listas.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); });
-      if (items.length < 4) {
-        return Promise.all([consultar("necesidades déficit provincia " + p + " Cuba"), consultar("carencias servicios población " + p + " Cuba")])
-          .then(function (extra) { extra.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); }); return items; });
-      }
-      return items;
-    }).then(function (items) {
-      var porSector = {};
-      items.forEach(function (it) {
-        var texto = String(it.extracto || it.texto || it.titulo || "");
-        var frases = texto.split(/(?<=[.!?])\s+/);
-        SECTORES.forEach(function (s) {
-          if (!s[1].test(texto)) return;
-          var frase = frases.filter(function (f) { return s[1].test(f) && /falta|d[eé]ficit|necesid|problem|deterior|escasez|carencia|insuficien|demanda|afectac/i.test(f); })[0] || frases.filter(function (f) { return s[1].test(f); })[0] || texto.slice(0, 200);
-          frase = frase.trim().slice(0, 220);
-          if (frase.length < 25) return;
-          porSector[s[0]] = porSector[s[0]] || [];
-          if (!porSector[s[0]].some(function (x) { return x.hallazgo === frase; }))
-            porSector[s[0]].push({ sector: s[0], hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "" });
+    function desdeLaBase() {
+      return kbRefs(m).then(function (refs) {
+        var vistos = {}, lista = [];
+        (refs || []).forEach(function (r) {
+          var frase = String(r.dato || "").trim();
+          if (!r.tema || frase.length < 10 || vistos[frase]) return;
+          vistos[frase] = 1;
+          lista.push({ sector: String(r.tema), hallazgo: frase, fuente: String(r.fuente || "Base de conocimiento"), url: String(r.url || ""), origen: "base", fecha: String(r.fecha || "").slice(0, 10) });
         });
+        lista.sort(function (a, b) {
+          if (a.sector === "Producción de alimentos") return -1;
+          if (b.sector === "Producción de alimentos") return 1;
+          return 0;
+        });
+        return lista.slice(0, 8);
       });
-      var sectores = Object.keys(porSector).sort(function (a, b) {
-        if (a === "Producción de alimentos") return -1;
-        if (b === "Producción de alimentos") return 1;
-        return porSector[b].length - porSector[a].length;
+    }
+    function enLaWeb(base) {
+      if (caja) caja.innerHTML = '<p class="hint">🔎 Buscando en la web las necesidades de ' + esc(m) + "… (puede tardar unos segundos)</p>";
+      var qs = [
+        "necesidades carencias déficit " + m + " " + p + " Cuba",
+        "problemas agua vivienda electricidad " + m + " Cuba",
+        "desarrollo local " + m + " necesidades inversión programas",
+        m + " " + p + " abasto viales transporte salud problemas población"
+      ];
+      function consultar(q) {
+        return fetch(URL_BUSCAR + "&q=" + encodeURIComponent(q)).then(function (r) { return r.json(); })
+          .then(function (d) { return (d && d.items) || []; }).catch(function () { return []; });
+      }
+      return Promise.all(qs.map(consultar)).then(function (listas) {
+        var items = [];
+        listas.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); });
+        if (items.length < 4) {
+          return Promise.all([consultar("necesidades déficit provincia " + p + " Cuba"), consultar("carencias servicios población " + p + " Cuba")])
+            .then(function (extra) { extra.forEach(function (l) { l.forEach(function (it) { if (!items.some(function (x) { return x.url === it.url && x.titulo === it.titulo; })) items.push(it); }); }); return items; });
+        }
+        return items;
+      }).then(function (items) {
+        var porSector = {};
+        items.forEach(function (it) {
+          var texto = String(it.extracto || it.texto || it.titulo || "");
+          var frases = texto.split(/(?<=[.!?])\s+/);
+          SECTORES.forEach(function (sec) {
+            if (!sec[1].test(texto)) return;
+            var frase = frases.filter(function (f) { return sec[1].test(f) && /falta|d[eé]ficit|necesid|problem|deterior|escasez|carencia|insuficien|demanda|afectac/i.test(f); })[0] || frases.filter(function (f) { return sec[1].test(f); })[0] || texto.slice(0, 200);
+            frase = frase.trim().slice(0, 220);
+            if (frase.length < 25) return;
+            porSector[sec[0]] = porSector[sec[0]] || [];
+            if (!porSector[sec[0]].some(function (x) { return x.hallazgo === frase; }))
+              porSector[sec[0]].push({ sector: sec[0], hallazgo: frase, fuente: it.fuente || "Web", url: it.url || "", origen: "web" });
+          });
+        });
+        var sectores = Object.keys(porSector).sort(function (a, b) {
+          if (a === "Producción de alimentos") return -1;
+          if (b === "Producción de alimentos") return 1;
+          return porSector[b].length - porSector[a].length;
+        });
+        var webLista = [];
+        sectores.forEach(function (sec) { if (porSector[sec][0]) webLista.push(porSector[sec][0]); });
+        sectores.forEach(function (sec) { for (var i = 1; i < porSector[sec].length && webLista.length < 8; i++) webLista.push(porSector[sec][i]); });
+        kbGuardarRefs(webLista, n);
+        var lista = base.slice();
+        webLista.forEach(function (w) { if (lista.length < 8 && !lista.some(function (x) { return x.hallazgo === w.hallazgo; })) lista.push(w); });
+        n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: lista, desdeBase: base.length > 0 && webLista.length === 0 };
+        guardar(); pintar();
+        toast(lista.length ? "🔎 " + lista.length + " necesidades para " + m + (base.length ? " (" + base.length + " de la base de conocimiento)" : "") + " — las nuevas quedaron guardadas en la base" : "🔎 Poca evidencia para " + m);
       });
-      var lista = [];
-      sectores.forEach(function (s) { if (porSector[s][0]) lista.push(porSector[s][0]); });
-      sectores.forEach(function (s) { for (var i = 1; i < porSector[s].length && lista.length < 8; i++) lista.push(porSector[s][i]); });
-      n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: lista.slice(0, 8) };
-      guardar(); pintar();
-      toast(lista.length ? "🔎 " + lista.length + " necesidades encontradas para " + m : "🔎 Poca evidencia web para " + m);
-    }).catch(function () { toast("No se pudo buscar (sin conexión)."); });
+    }
+    if (forzar) { enLaWeb([]); return; }
+    if (caja) caja.innerHTML = '<p class="hint">📚 Primero busco en la Base de Conocimiento lo ya guardado de ' + esc(m) + "…</p>";
+    desdeLaBase().then(function (base) {
+      if (base.length >= 5) {
+        n.web = { fecha: new Date().toLocaleString("es-CU"), municipio: m, lista: base, desdeBase: true };
+        guardar(); pintar();
+        toast("📚 " + base.length + " necesidades desde la Base de Conocimiento: no hizo falta buscar en la web");
+        return;
+      }
+      enLaWeb(base);
+    }).catch(function () { enLaWeb([]); });
   }
 
   var PUEBLO = {
@@ -1400,6 +1608,10 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  var _pintarEstudioKB = pintarEstudio;
+  pintarEstudio = function () { _pintarEstudioKB(); try { kbGuardarEstudio("Estudio de factibilidad (formato oficial) del plan de inversiones"); } catch (e) {} };
+  var _pintarInformeKB = pintarInforme;
+  pintarInforme = function () { _pintarInformeKB(); try { kbGuardarEstudio("Informe para el pueblo del plan de inversiones"); } catch (e) {} };
   function recalcular() {
     var n = nec(); if (!n) return;
     var totCUP = 0, totUSD = 0;
@@ -1438,156 +1650,3 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   }
 })();
 </script>
-<script>
-/* ============ fcEstrategia: «Estrategia Viva» — portada del municipio ============
-   La página como Estrategia de Desarrollo Municipal VIVA: al introducir los datos
-   de los indicadores, las cifras se actualizan solas (avance %, totales, tarjetas).
-   - Tarjetas vivas desde las plantillas (ONEI) y el plan de necesidades.
-   - Indicadores de la EDM editables: línea base, meta, valor actual → avance %.
-   - Alimentos primero, como manda la prioridad fijada por Leonardo. */
-(function () {
-  var activo = false;
-
-  var SEMILLA = [
-    ["Autoabastecimiento de alimentos básicos", "%", "", "80", "", "2030"],
-    ["Cobertura local de hortalizas, frutas y viandas", "%", "", "60", "", "2029"],
-    ["Aumento de producción en patios y organopónicos", "%", "", "20", "", "2027"],
-    ["Mercados agroecológicos locales en funcionamiento", "mercados", "", "5", "", "2027"],
-    ["Población con abasto de agua regular", "%", "", "100", "", "2030"],
-    ["Viviendas construidas o reparadas", "viviendas", "", "", "", "2030"],
-    ["Empleos creados por los proyectos del plan", "empleos", "", "", "", "2030"]
-  ];
-  function defecto() {
-    return { indicadores: SEMILLA.map(function (x) { return { nombre: x[0], unidad: x[1], base: x[2], meta: x[3], actual: x[4], ano: x[5] }; }) };
-  }
-  function est() {
-    if (typeof data === "undefined") return null;
-    if (!data.estrategia) data.estrategia = defecto();
-    if (!Array.isArray(data.estrategia.indicadores)) data.estrategia.indicadores = defecto().indicadores;
-    return data.estrategia;
-  }
-  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; }
-  function hay(v) { return v !== "" && v != null && !isNaN(parseFloat(v)); }
-  function fmt(n) { return n ? n.toLocaleString("es-CU", { maximumFractionDigits: 0 }) : "—"; }
-  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
-  function guardar() { if (typeof persist === "function") persist(); }
-  function primerNumero(texto) {
-    var grupos = String(texto || "").match(/\d[\d. ]*\d|\d/g) || [];
-    var mayor = 0;
-    grupos.forEach(function (g) { var v = parseInt(g.replace(/[^\d]/g, ""), 10); if (v > mayor) mayor = v; });
-    return mayor;
-  }
-  function avance(ind) {
-    if (!hay(ind.actual) || !hay(ind.meta)) return null;
-    var b = hay(ind.base) ? num(ind.base) : 0, m = num(ind.meta), a = num(ind.actual);
-    if (m === b) return null;
-    return Math.max(0, Math.min(100, Math.round((a - b) / (m - b) * 100)));
-  }
-
-  /* ---------- botón de pestaña: la primera (portada del municipio) ---------- */
-  var primerBtn = document.querySelector(".tab");
-  if (!primerBtn) return;
-  var btn = document.createElement("button");
-  btn.className = "tab"; btn.type = "button"; btn.id = "tabEstrategia";
-  btn.innerHTML = "<b>🏛️ Estrategia Viva</b><span>la EDM del municipio, actualizada sola</span>";
-  primerBtn.parentNode.insertBefore(btn, primerBtn);
-  btn.addEventListener("click", function () {
-    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
-    btn.classList.add("active");
-    activo = true; pintar();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
-  document.querySelectorAll(".tab").forEach(function (b) {
-    if (b !== btn) b.addEventListener("click", function () { activo = false; btn.classList.remove("active"); });
-  });
-  var btnVaciar = document.getElementById("clearBtn");
-  if (btnVaciar) btnVaciar.addEventListener("click", function (e) {
-    if (activo) { e.stopImmediatePropagation(); toast("Estás en Estrategia Viva: edita los indicadores en su tabla."); }
-  }, true);
-
-  /* ---------- cifras vivas desde el resto de la página ---------- */
-  function cifras() {
-    var muni = (data.plan && data.plan.municipio) || (data.proyecto && data.proyecto.municipio) || (data.necesidades && data.necesidades.municipio) || "";
-    var prov = (data.plan && data.plan.provincia) || (data.proyecto && data.proyecto.provincia) || (data.necesidades && data.necesidades.provincia) || "";
-    var pob = data.onei ? primerNumero(data.onei.pobTot) : 0;
-    var hog = data.onei ? primerNumero(data.onei.hogares) : 0;
-    var totCUP = 0, totUSD = 0, alimCUP = 0, alimUSD = 0, lineas = 0;
-    if (data.necesidades && Array.isArray(data.necesidades.filas)) {
-      data.necesidades.filas.forEach(function (f) {
-        var c = num(f.cantidad); if (!c) return;
-        var tc = c * num(f.costoCUP), tu = c * num(f.costoUSD);
-        totCUP += tc; totUSD += tu; lineas++;
-        if (String(f.programa || "").indexOf("Producción de alimentos") === 0) { alimCUP += tc; alimUSD += tu; }
-      });
-    }
-    var halladas = (data.necesidades && data.necesidades.web && data.necesidades.web.lista) ? data.necesidades.web.lista.length : 0;
-    return { muni: muni, prov: prov, pob: pob, hog: hog, totCUP: totCUP, totUSD: totUSD, alimCUP: alimCUP, alimUSD: alimUSD, lineas: lineas, halladas: halladas };
-  }
-
-  function pintar() {
-    var e = est(); if (!e) return;
-    var c = cifras();
-    var tarjeta = function (titulo, valor, nota) {
-      return '<div style="flex:1 1 150px;border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:12px;min-width:140px"><div class="hint">' + titulo + '</div><div style="font-size:20px;font-weight:800;margin:4px 0">' + valor + '</div><div class="hint">' + nota + "</div></div>";
-    };
-    var h = '<div class="card"><h3><span class="num">🏛️</span>Estrategia de Desarrollo Municipal — ' + (c.muni ? esc(c.muni) : "tu municipio") + (c.prov ? " (" + esc(c.prov) + ")" : "") + "</h3>" +
-      '<p class="sub">Esta página ES la estrategia viva del municipio: cada dato que escribas en las plantillas, en el plan de necesidades o en los indicadores actualiza las cifras de aquí y de los informes, sin volver a teclear nada.</p>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">' +
-      tarjeta("Población (ONEI)", fmt(c.pob), c.hog ? fmt(c.hog) + " hogares" : "completa la plantilla ONEI") +
-      tarjeta("Inversión del plan 2027-2032", fmt(c.totCUP) + " CUP", fmt(c.totUSD) + " USD · " + c.lineas + " líneas con cantidad") +
-      tarjeta("⭐ Alimentos primero", fmt(c.alimCUP) + " CUP", fmt(c.alimUSD) + " USD del plan") +
-      tarjeta("Necesidades halladas en la web", c.halladas ? String(c.halladas) : "—", "pestaña Necesidades") +
-      "</div></div>";
-
-    h += '<div class="card"><h3><span class="num">📈</span>Indicadores de la estrategia</h3>' +
-      '<p class="sub">Escribe el valor actual de cada indicador y el avance hacia la meta se calcula solo. Las metas sembradas son las de la Línea 1 de alimentos y las básicas de todo municipio: ajústalas a tu territorio.</p>' +
-      '<div style="overflow-x:auto"><table id="estTabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:760px"><thead><tr>' +
-      ["Indicador", "Unidad", "Línea base", "Meta", "Año meta", "Valor actual", "Avance", ""].map(function (t) { return '<th style="text-align:left;padding:6px;border-bottom:2px solid rgba(255,255,255,.25)">' + t + "</th>"; }).join("") +
-      "</tr></thead><tbody>";
-    e.indicadores.forEach(function (ind, i) {
-      var av = avance(ind);
-      h += '<tr data-ind="' + i + '">' +
-        '<td><input class="inp estIn" data-c="nombre" value="' + esc(ind.nombre) + '"></td>' +
-        '<td><input class="inp estIn" data-c="unidad" value="' + esc(ind.unidad) + '" style="max-width:90px"></td>' +
-        '<td><input class="inp estIn" data-c="base" type="number" step="any" value="' + esc(ind.base) + '" style="max-width:80px"></td>' +
-        '<td><input class="inp estIn" data-c="meta" type="number" step="any" value="' + esc(ind.meta) + '" style="max-width:80px"></td>' +
-        '<td><input class="inp estIn" data-c="ano" value="' + esc(ind.ano) + '" style="max-width:70px"></td>' +
-        '<td><input class="inp estIn" data-c="actual" type="number" step="any" value="' + esc(ind.actual) + '" style="max-width:90px"></td>' +
-        '<td style="min-width:130px"><div style="background:rgba(255,255,255,.12);border-radius:99px;height:12px;overflow:hidden"><div class="estBar" style="height:100%;width:' + (av == null ? 0 : av) + '%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div><span class="estPct hint">' + (av == null ? "sin dato" : av + " %") + "</span></td>" +
-        '<td><button type="button" class="btn btn-ghost btn-sm estDel" title="Quitar indicador">✕</button></td></tr>';
-    });
-    h += "</tbody></table></div>" +
-      '<div class="btn-row" style="margin-top:10px"><button type="button" class="btn btn-ghost" id="estAdd">➕ Añadir indicador</button></div>' +
-      '<p class="hint" style="margin-top:8px">El estudio de factibilidad y el informe para el pueblo (pestaña Necesidades) se generan siempre con estos datos del momento: si cambia un indicador o una cifra del plan, los informes salen actualizados.</p></div>';
-
-    document.getElementById("formCtn").innerHTML = h;
-    cablear();
-  }
-
-  function cablear() {
-    var e = est();
-    document.querySelectorAll("#estTabla tbody tr").forEach(function (tr) {
-      var i = +tr.getAttribute("data-ind");
-      tr.querySelectorAll(".estIn").forEach(function (inp) {
-        inp.addEventListener("input", function () {
-          e.indicadores[i][inp.getAttribute("data-c")] = inp.value;
-          guardar();
-          var av = avance(e.indicadores[i]);
-          var bar = tr.querySelector(".estBar"), pct = tr.querySelector(".estPct");
-          if (bar) bar.style.width = (av == null ? 0 : av) + "%";
-          if (pct) pct.textContent = (av == null ? "sin dato" : av + " %");
-        });
-      });
-      tr.querySelector(".estDel").addEventListener("click", function () {
-        if (!confirm("¿Quitar este indicador?")) return;
-        e.indicadores.splice(i, 1); guardar(); pintar();
-      });
-    });
-    document.getElementById("estAdd").addEventListener("click", function () {
-      e.indicadores.push({ nombre: "", unidad: "", base: "", meta: "", actual: "", ano: "" });
-      guardar(); pintar();
-    });
-  }
-})();
-</script>
-
