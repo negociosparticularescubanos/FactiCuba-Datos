@@ -1920,3 +1920,174 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
 </script>
 </body>
 </html>
+<script>
+/* ============ fcEvaluacion: Evaluación de la EDM y los PDL (Metodología v4.0) ============
+   Versión GENÉRICA para cualquier municipio de la Metodología Operativa de
+   Seguimiento y Evaluación de Impactos de la EDM (Ciénaga de Zapata, 2026):
+   índice sintético tipo ISDEM con las 7 dimensiones y los PESOS EDITABLES
+   (la semilla es la ponderación de Ciénaga: ambiental 30 %), la Ficha Única de
+   Evaluación Semestral por PDL (art. 40 del Decreto 174/2026, con el dictamen
+   ambiental como filtro excluyente y la revisión de adecuación de los 180 días)
+   y el guardado de cada evaluación en la Base de Conocimiento como historial
+   del municipio. Doble frecuencia: anual la EDM, semestral cada PDL. */
+(function () {
+  "use strict";
+  var URL_KB = "https://script.google.com/macros/s/AKfycbzDmBLwgQj0Mx-YKryieWePKs7jFO29FX5D1Mn3KLj9ICnkSUsJwztwtNzUHj6e_5PJ6g/exec";
+  var DIMS = [
+    { dim: "Ambiental y ordenamiento", peso: 30 }, { dim: "Economía local", peso: 20 },
+    { dim: "Soberanía alimentaria", peso: 15 }, { dim: "Calidad de vida", peso: 15 },
+    { dim: "Equidad territorial", peso: 8 }, { dim: "Gobernanza y participación", peso: 6 },
+    { dim: "Ciencia e innovación", peso: 6 }
+  ];
+  function semillaIndicadores() {
+    return [
+      ["I1.1", "Ambiental y ordenamiento", "Compatibilidad territorial-ambiental: PDL con dictamen favorable del ordenamiento territorial y del órgano ambiental", "% de los PDL activos", "100"],
+      ["I1.2", "Ambiental y ordenamiento", "Conservación y restauración de ecosistemas (hectáreas rehabilitadas frente a la meta anual)", "ha frente a la meta", ""],
+      ["I1.3", "Ambiental y ordenamiento", "Protección ambiental: reducción de afectaciones e infracciones ambientales", "% de reducción", ""],
+      ["I1.4", "Ambiental y ordenamiento", "Transición energética y adaptación al cambio climático: PDL con fuentes renovables o medidas de adaptación", "% de los PDL", ""],
+      ["I2.1", "Economía local", "Autonomía presupuestaria: ingresos propios y aportes de PDL sobre el presupuesto ejecutado", "%", ""],
+      ["I2.2", "Economía local", "Ejecución del Fondo de Desarrollo Territorial: recursos ejecutados sobre los disponibles", "%", "100"],
+      ["I2.3", "Economía local", "Encadenamientos productivos: PDL con contratos efectivos con empresas o el turismo", "% de los PDL", ""],
+      ["I2.4", "Economía local", "Captación de divisas y crédito: ingresos en divisas retenidos y créditos/fideicomisos activos (Res. 118/2026)", "monto frente a la meta fijada", ""],
+      ["I3.1", "Soberanía alimentaria", "Autoabastecimiento local de alimentos (producción local per cápita)", "kg per cápita al mes", ""],
+      ["I3.2", "Soberanía alimentaria", "Cobertura de recogida de desechos sólidos en los asentamientos", "% de los asentamientos", ""],
+      ["I3.3", "Soberanía alimentaria", "Economía circular: PDL o iniciativas con reciclaje y aprovechamiento de residuos", "n.º de iniciativas", ""],
+      ["I4.1", "Calidad de vida", "Acceso a agua segura para la población", "% de la población", ""],
+      ["I4.2", "Calidad de vida", "Fondo habitacional y vial rehabilitado", "% rehabilitado", ""],
+      ["I4.3", "Calidad de vida", "Satisfacción ciudadana con transporte, salud, educación y conectividad", "% de población satisfecha", ""],
+      ["I5.1", "Equidad territorial", "Empleo inclusivo en PDL: nuevos empleos de mujeres y jóvenes (18-35)", "% del empleo creado", ""],
+      ["I5.2", "Equidad territorial", "Desconcentración: PDL ubicados fuera de la cabecera municipal", "% de los PDL", ""],
+      ["I5.3", "Equidad territorial", "Retención de fuerza calificada: saldo neto anual de profesionales y técnicos residentes", "saldo frente a la meta", ""],
+      ["I6.1", "Gobernanza y participación", "Participación ciudadana efectiva: propuestas comunitarias incorporadas a la EDM o al presupuesto participativo (art. 50)", "% de las propuestas", ""],
+      ["I6.2", "Gobernanza y participación", "Rendición de cuentas: consejos populares con audiencias públicas realizadas y acuerdos cumplidos", "% de los consejos", ""],
+      ["I7.1", "Ciencia e innovación", "Intensidad de I+D+i: proyectos que aplican resultados científicos o asistencia técnica universitaria / CITMA", "% de los proyectos", ""],
+      ["I7.2", "Ciencia e innovación", "Profesionalización: cuadros, titulares de PDL y líderes comunitarios capacitados", "n.º de capacitados", ""]
+    ].map(function (x) { return { cod: x[0], dim: x[1], nombre: x[2], unidad: x[3], meta: x[4], actual: "" }; });
+  }
+  function estado() {
+    if (typeof data === "undefined" || !data) return null;
+    if (!data.evaluacion) {
+      data.evaluacion = { pesos: {}, indicadores: semillaIndicadores(), fichas: [] };
+      DIMS.forEach(function (d) { data.evaluacion.pesos[d.dim] = d.peso; });
+    }
+    return data.evaluacion;
+  }
+  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function num(v) { var n = parseFloat(String(v == null ? "" : v).replace(/\s/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; }
+  function lugar() {
+    var n = (typeof data !== "undefined" && data && data.necesidades) || {};
+    var p = (data && data.plan) || {}, y = (data && data.proyecto) || {};
+    return { prov: n.provincia || p.provincia || y.provincia || "", muni: n.municipio || p.municipio || y.municipio || "" };
+  }
+  function puntaje(ind) {
+    var m = num(ind.meta);
+    if (ind.actual === "" || ind.actual == null || !(m > 0)) return null;
+    return Math.max(0, Math.min(100, Math.round((num(ind.actual) / m) * 100)));
+  }
+  function puntajeDim(ev, dim) {
+    var vals = ev.indicadores.filter(function (i) { return i.dim === dim; }).map(puntaje).filter(function (x) { return x !== null; });
+    return vals.length ? Math.round(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
+  }
+  function indice(ev) {
+    var suma = 0, pesos = 0, d1 = null;
+    DIMS.forEach(function (d) {
+      var p = puntajeDim(ev, d.dim), w = num(ev.pesos[d.dim]);
+      if (p !== null && w > 0) { suma += p * w; pesos += w; if (d.dim.indexOf("Ambiental") === 0) d1 = p; }
+    });
+    return pesos ? { total: Math.round(suma / pesos), d1: d1, pesos: pesos } : { total: null, d1: null, pesos: 0 };
+  }
+  function semaforo(v) {
+    if (v == null) return "Sin datos todavía";
+    if (v >= 85) return "Impacto Alto — consolidar y escalar";
+    if (v >= 65) return "Impacto Medio — aplicar plan de ajuste";
+    if (v >= 40) return "Impacto Bajo — reorientar recursos";
+    return "Impacto Negativo/Crítico — intervención urgente";
+  }
+  var activo = false;
+  function pintar() {
+    var ev = estado(); if (!ev) return;
+    var r = indice(ev), lg = lugar();
+    var salvaguarda = r.d1 !== null && r.d1 < 60 && r.total !== null && r.total >= 85;
+    var sumaPesos = DIMS.reduce(function (a, d) { return a + num(ev.pesos[d.dim]); }, 0);
+    var html = '<div class="card"><h2>⚖️ Evaluación de la Estrategia y de los PDL</h2>' +
+      '<p class="hint">Metodología de Evaluación de la EDM y los PDL (doble frecuencia del Decreto 174/2026: la Estrategia se evalúa cada año, art. 10.3, y cada PDL cada semestre, art. 40). Los pesos de las dimensiones son EDITABLES: la semilla es la ponderación de Ciénaga de Zapata, donde lo ambiental pesa 30 % por el humedal; cada municipio ajusta la suya. Indicador sin dato no puntúa y el peso se reparte declarándolo.</p>' +
+      '<div class="grid2"><div class="mini"><div class="n">' + (r.total == null ? "—" : r.total + " / 100") + '</div><div class="l">Índice sintético de desempeño' + (lg.muni ? " — " + esc(lg.muni) : "") + "<br>" + semaforo(r.total) + (r.pesos && r.pesos < sumaPesos ? "<br>(calculado con el " + r.pesos + " de " + sumaPesos + " de peso: faltan datos)" : "") + "</div></div>" +
+      '<div class="mini"><div class="n">' + (r.d1 == null ? "—" : r.d1 + " / 100") + '</div><div class="l">Dimensión ambiental (la salvaguarda: bajo 60, nadie puede ser Verde)</div></div></div>' +
+      (salvaguarda ? '<p class="hint" style="background:#fff3e0;border-radius:8px;padding:8px">🛡️ <b>Cláusula de salvaguarda ecológica:</b> la dimensión ambiental está bajo 60 — el municipio no puede alcanzar la categoría Verde aunque el índice total la sugiera.</p>' : "") +
+      DIMS.map(function (d) {
+        var p = puntajeDim(ev, d.dim);
+        return "<h3>" + esc(d.dim) + ' — peso <input class="inp evPeso" data-dim="' + esc(d.dim) + '" type="number" min="0" max="100" value="' + esc(ev.pesos[d.dim]) + '" style="width:70px;display:inline-block"> % · puntaje: ' + (p == null ? "sin datos" : "<b>" + p + " / 100</b>") + "</h3>" +
+          '<div class="tablewrap"><table><thead><tr><th>Indicador</th><th>Meta</th><th>Valor actual</th><th>Puntaje</th></tr></thead><tbody>' +
+          ev.indicadores.map(function (ind, i) { return { ind: ind, i: i }; }).filter(function (x) { return x.ind.dim === d.dim; }).map(function (x) {
+            var pu = puntaje(x.ind);
+            return "<tr><td><b>" + esc(x.ind.cod) + "</b> " + esc(x.ind.nombre) + ' <span class="hint">(' + esc(x.ind.unidad) + ')</span></td>' +
+              '<td><input class="inp evIn" data-i="' + x.i + '" data-c="meta" value="' + esc(x.ind.meta) + '"></td>' +
+              '<td><input class="inp evIn" data-i="' + x.i + '" data-c="actual" value="' + esc(x.ind.actual) + '"></td>' +
+              "<td>" + (pu == null ? '<span class="hint">sin dato</span>' : "<b>" + pu + "</b>") + "</td></tr>";
+          }).join("") + "</tbody></table></div>";
+      }).join("") +
+      '<p class="hint">Suma de pesos: ' + sumaPesos + " %" + (sumaPesos !== 100 ? " — la metodología suma 100; el índice se calcula repartiendo los pesos igualmente, pero conviene ajustarlos a 100." : "") + "</p></div>";
+    /* Fichas de PDL */
+    html += '<div class="card"><h2>📋 Ficha Única de Evaluación Semestral de PDL (art. 40)</h2>' +
+      '<p class="hint">Sirve para la revisión extraordinaria de adecuación de los PDL aprobados antes del Decreto (plazo legal: hasta el <b>19 de mayo de 2027</b>) y para los cortes semestrales. El dictamen ambiental es un FILTRO EXCLUYENTE: desfavorable = suspensión inmediata. El dictamen del CAM puede ser: ratificar, ratificar con medidas, promover el tránsito a actor económico (art. 51) o extinguir.</p>' +
+      '<div class="btn-row"><button type="button" class="btn btn-primary" id="evAddFicha">➕ Añadir un PDL a evaluar</button> <button type="button" class="btn" id="evGuardarKB">💾 Guardar esta evaluación en la Base de Conocimiento</button> <button type="button" class="btn" onclick="window.print()">🖨 Imprimir</button></div>' +
+      ev.fichas.map(function (f, fi) {
+        return '<div style="border:1px solid #dfe5ee;border-radius:10px;padding:10px;margin-top:10px"><b>PDL ' + (fi + 1) + '</b> <button type="button" class="btn evDelFicha" data-fi="' + fi + '" style="float:right">✖ Quitar</button>' +
+          (f.filtro === "Desfavorable" ? '<p class="hint" style="background:#ffebee;border-radius:8px;padding:8px">⛔ <b>Filtro ambiental excluyente:</b> dictamen desfavorable → suspensión inmediata del PDL hasta resolverlo.</p>' : "") +
+          (f.fisico !== "" && f.fisico != null && num(f.fisico) < 60 ? '<p class="hint" style="background:#fff8e1;border-radius:8px;padding:8px">⚠ Cumplimiento físico bajo 60 %: alerta amarilla — plan de corrección en 60 días, salvo fuerza mayor documentada.</p>' : "") +
+          '<div class="field"><label>A. Nombre del PDL, titular y Consejo Popular</label><input class="inp evFic" data-fi="' + fi + '" data-c="nombre" value="' + esc(f.nombre || "") + '"></div>' +
+          '<div class="field"><label>Corte (ej. Adecuación 180 días / 1er semestre 2027)</label><input class="inp evFic" data-fi="' + fi + '" data-c="corte" value="' + esc(f.corte || "") + '"></div>' +
+          '<div class="field"><label>B. Dictamen ambiental y territorial (filtro obligatorio)</label><select class="inp evFic" data-fi="' + fi + '" data-c="filtro">' + ["Sin evaluar", "Favorable", "Desfavorable"].map(function (o) { return "<option" + (f.filtro === o ? " selected" : "") + ">" + o + "</option>"; }).join("") + "</select></div>" +
+          '<div class="field"><label>C. Cumplimiento físico del semestre (%)</label><input class="inp evFic" data-fi="' + fi + '" data-c="fisico" value="' + esc(f.fisico || "") + '"></div>' +
+          '<div class="field"><label>D. Ejecución financiera y tributaria (créditos/fideicomiso 4 %, aportes al Fondo)</label><input class="inp evFic" data-fi="' + fi + '" data-c="financiero" value="' + esc(f.financiero || "") + '"></div>' +
+          '<div class="field"><label>E. Impacto social y equidad (empleos, mujeres y jóvenes; tope 100 contratados, art. 38)</label><input class="inp evFic" data-fi="' + fi + '" data-c="social" value="' + esc(f.social || "") + '"></div>' +
+          '<div class="field"><label>F. Control popular (verificación en el Consejo Popular)</label><input class="inp evFic" data-fi="' + fi + '" data-c="control" value="' + esc(f.control || "") + '"></div>' +
+          '<div class="field"><label>G. Dictamen semestral del CAM</label><select class="inp evFic" data-fi="' + fi + '" data-c="dictamen">' + ["", "Ratificar y continuar", "Ratificar con medidas correctivas", "Promover tránsito a actor económico (art. 51)", "Extinguir y liquidar"].map(function (o) { return "<option" + (f.dictamen === o ? " selected" : "") + ">" + (o || "— sin dictamen —") + "</option>"; }).join("") + "</select></div></div>";
+      }).join("") + "</div>";
+    document.getElementById("formCtn").innerHTML = html;
+    document.querySelectorAll(".evIn").forEach(function (inp) {
+      inp.addEventListener("change", function () { ev.indicadores[Number(inp.getAttribute("data-i"))][inp.getAttribute("data-c")] = inp.value; persist(); pintar(); });
+    });
+    document.querySelectorAll(".evPeso").forEach(function (inp) {
+      inp.addEventListener("change", function () { ev.pesos[inp.getAttribute("data-dim")] = inp.value; persist(); pintar(); toast("Pesos actualizados"); });
+    });
+    document.querySelectorAll(".evFic").forEach(function (inp) {
+      inp.addEventListener("change", function () { ev.fichas[Number(inp.getAttribute("data-fi"))][inp.getAttribute("data-c")] = inp.value; persist(); pintar(); });
+    });
+    document.querySelectorAll(".evDelFicha").forEach(function (b) {
+      b.addEventListener("click", function () { ev.fichas.splice(Number(b.getAttribute("data-fi")), 1); persist(); pintar(); });
+    });
+    document.getElementById("evAddFicha").addEventListener("click", function () { ev.fichas.push({ nombre: "", corte: "", filtro: "Sin evaluar", fisico: "", financiero: "", social: "", control: "", dictamen: "" }); persist(); pintar(); });
+    document.getElementById("evGuardarKB").addEventListener("click", function () {
+      var lg2 = lugar();
+      var resumen = "Índice sintético: " + (r.total == null ? "sin datos" : r.total + "/100 (" + semaforo(r.total) + ")") +
+        ". Dimensión ambiental: " + (r.d1 == null ? "sin datos" : r.d1 + "/100") +
+        ". PDL evaluados: " + ev.fichas.length + " (" + ev.fichas.filter(function (f) { return f.dictamen; }).length + " con dictamen del CAM: " +
+        ev.fichas.filter(function (f) { return f.dictamen; }).map(function (f) { return (f.nombre || "PDL") + " → " + f.dictamen; }).join("; ") + ").";
+      fetch(URL_KB, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ accion: "guardar_estudio", estudio: { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: lg2.prov, municipio: lg2.muni, proyecto: "Evaluación EDM/PDL (Metodología v4.0)", resumen: resumen, total_cup: "", total_usd: "", dictamen: semaforo(r.total) } }) })
+        .then(function () { toast("💾 Evaluación guardada en la Base de Conocimiento"); })
+        .catch(function () { toast("Sin conexión: la evaluación quedó guardada en este equipo"); });
+    });
+  }
+  /* ---------- botón de pestaña propio ---------- */
+  var tabRes = document.querySelector('.tab[data-tab="resumen"]');
+  if (!tabRes || !tabRes.parentNode) return;
+  var btn = document.createElement("button");
+  btn.className = "tab"; btn.type = "button"; btn.id = "tabEvaluacion";
+  btn.innerHTML = "<b>⚖️ Evaluación</b><span>índice de la EDM y ficha semestral de cada PDL</span>";
+  tabRes.parentNode.insertBefore(btn, tabRes);
+  btn.addEventListener("click", function () {
+    document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    activo = true; pintar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.querySelectorAll(".tab").forEach(function (b) {
+    if (b !== btn) b.addEventListener("click", function () { activo = false; btn.classList.remove("active"); });
+  });
+  var btnVaciar = document.getElementById("clearBtn");
+  if (btnVaciar) btnVaciar.addEventListener("click", function (e) {
+    if (activo) { e.stopImmediatePropagation(); toast("Estás en Evaluación: usa los botones de esa vista."); }
+  }, true);
+})();
+</script>
