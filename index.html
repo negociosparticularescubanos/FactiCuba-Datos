@@ -822,9 +822,16 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       .then(function (j) {
         if (!j || !j.ok) throw 0;
         var d = j.datos || {};
-        var vacio = !Object.keys(d.proyecto || {}).length && !Object.keys(d.plan || {}).length && !Object.keys(d.onei || {}).length;
+        var vacio = !Object.keys(d.proyecto || {}).length && !Object.keys(d.plan || {}).length && !Object.keys(d.onei || {}).length
+          && !Object.keys(d.necesidades || {}).length && !Object.keys(d.estrategia || {}).length && !Object.keys(d.evaluacion || {}).length;
         if (vacio) { poner("ok", "Base de datos: conectada"); alert("La base no tiene datos guardados para este usuario."); return; }
-        localStorage.setItem("facticuba_data_" + currentUser, JSON.stringify({ proyecto: d.proyecto || {}, plan: d.plan || {}, onei: d.onei || {} }));
+        var local = {};
+        try { local = JSON.parse(localStorage.getItem("facticuba_data_" + currentUser) || "{}"); } catch (e) {}
+        local.proyecto = d.proyecto || {}; local.plan = d.plan || {}; local.onei = d.onei || {};
+        if (d.necesidades) local.necesidades = d.necesidades;
+        if (d.estrategia) local.estrategia = d.estrategia;
+        if (d.evaluacion) local.evaluacion = d.evaluacion;
+        localStorage.setItem("facticuba_data_" + currentUser, JSON.stringify(local));
         location.reload();
       })
       .catch(function () { poner("mal", "Base de datos: sin conexión"); alert("No se pudo traer la copia. Revisa la conexión."); });
