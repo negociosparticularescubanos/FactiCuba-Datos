@@ -795,7 +795,9 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
    - Botón «Restaurar de la nube»: trae la copia de la base y recarga la página.
    No toca el autoguardado local: si no hay internet, la app sigue como siempre. */
 (function () {
-  var URL_SERVIDOR = "https://script.google.com/macros/s/AKfycbzVAc0OZAWV8_XDeiRBRGDVYw7YZoDla99r89i6azBy54IzzM5aF8TlTvR5iPcrDvaLWg/exec";
+  var SUPA_URL = "https://uczlkdzvzbqgzzlhcmro.supabase.co";
+  var SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjemxrZHp2emJxZ3p6bGhjbXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMzU2ODAsImV4cCI6MjExMDcxMTY4MH0.3xwFjVbL-Usa9hohxU0u__alXH8ZsdsJhH5CWllkH1M";
+  function supaHeaders() { return { apikey: SUPA_ANON, Authorization: "Bearer " + SUPA_ANON }; }
   var ultimoHash = null, temporizador = null, subiendo = false;
 
   var css = document.createElement("style");
@@ -822,9 +824,8 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   function conTimeout(ms) { var c = new AbortController(); setTimeout(function () { c.abort(); }, ms); return c.signal; }
 
   function ping() {
-    return fetch(URL_SERVIDOR + "?accion=ping", { signal: conTimeout(12000) })
-      .then(function (r) { return r.json(); })
-      .then(function (j) { if (!j || !j.ok) throw 0; poner("ok", "Base de datos: conectada"); return true; })
+    return fetch(SUPA_URL + "/rest/v1/respaldo?select=id&limit=1", { headers: supaHeaders(), signal: conTimeout(12000) })
+      .then(function (r) { if (!r.ok) throw 0; poner("ok", "Base de datos: conectada"); return true; })
       .catch(function () { poner("mal", "Base de datos: sin conexión"); return false; });
   }
 
@@ -839,15 +840,14 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
   function subir() {
     if (subiendo || typeof currentUser === "undefined" || !currentUser) return;
     subiendo = true;
-    fetch(URL_SERVIDOR, {
+    fetch(SUPA_URL + "/rest/v1/respaldo?on_conflict=usuario", {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ accion: "guardar", usuario: currentUser, datos: data }),
+      headers: Object.assign({ "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" }, supaHeaders()),
+      body: JSON.stringify({ usuario: currentUser, data: data, fecha_guardado: new Date().toISOString() }),
       signal: conTimeout(30000)
     })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (j && j.ok) { ultimoHash = hashLocal(); poner("ok", "Base de datos: conectada · guardado " + new Date().toLocaleTimeString("es-CU", { hour: "2-digit", minute: "2-digit" })); }
+      .then(function (r) {
+        if (r.ok) { ultimoHash = hashLocal(); poner("ok", "Base de datos: conectada · guardado " + new Date().toLocaleTimeString("es-CU", { hour: "2-digit", minute: "2-digit" })); }
         else poner("mal", "Base de datos: error al guardar");
       })
       .catch(function () { poner("mal", "Base de datos: sin conexión"); })
@@ -869,11 +869,11 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     if (typeof currentUser === "undefined" || !currentUser) { alert("Primero inicia sesión."); return; }
     if (!confirm("Se traerá la copia guardada en la base de datos y se reemplazará lo que hay en este navegador. ¿Seguir?")) return;
     poner("", "Base de datos: trayendo copia…");
-    fetch(URL_SERVIDOR + "?accion=cargar&usuario=" + encodeURIComponent(currentUser), { signal: conTimeout(20000) })
+    fetch(SUPA_URL + "/rest/v1/respaldo?usuario=eq." + encodeURIComponent(currentUser) + "&select=data", { headers: supaHeaders(), signal: conTimeout(20000) })
       .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j || !j.ok) throw 0;
-        var d = j.datos || {};
+      .then(function (filas) {
+        if (!Array.isArray(filas)) throw 0;
+        var d = (filas[0] && filas[0].data) || {};
         var vacio = !Object.keys(d.proyecto || {}).length && !Object.keys(d.plan || {}).length && !Object.keys(d.onei || {}).length
           && !Object.keys(d.necesidades || {}).length && !Object.keys(d.estrategia || {}).length && !Object.keys(d.evaluacion || {}).length;
         if (vacio) { poner("ok", "Base de datos: conectada"); alert("La base no tiene datos guardados para este usuario."); return; }
@@ -1366,7 +1366,8 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
     ["PDL Puerto Pesquero de interés local Caletón (en formulación)", "proyecto", ""]
   ];
   var URL_BUSCAR = "https://script.google.com/macros/s/AKfycbw02a9gP8DimXUlm9HP5Lg6ZAD3r_y-A8xSnGsSj6YN02WBzb59e4_Ocl2INDRIDcCu/exec?ruta=buscar";
-  var URL_KB = "https://script.google.com/macros/s/AKfycbzDmBLwgQj0Mx-YKryieWePKs7jFO29FX5D1Mn3KLj9ICnkSUsJwztwtNzUHj6e_5PJ6g/exec";
+  var SUPA_URL_N = "https://uczlkdzvzbqgzzlhcmro.supabase.co";
+  var SUPA_ANON_N = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjemxrZHp2emJxZ3p6bGhjbXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMzU2ODAsImV4cCI6MjExMDcxMTY4MH0.3xwFjVbL-Usa9hohxU0u__alXH8ZsdsJhH5CWllkH1M";
   var URL_HUB = "https://script.google.com/macros/s/AKfycbzBrhyvGu3yBC4RfVCqFHQXKmxzqj56JosS7uDNR9CCAtVOmiCmtx07i0zmrSZyvvvG/exec";
   function hubCarencias(mun, prov) {
     return fetch(URL_HUB + "?accion=carencias&municipio=" + encodeURIComponent(mun) + "&provincia=" + encodeURIComponent(prov || ""))
@@ -1378,21 +1379,21 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
       }).catch(function () { return []; });
   }
   function kbRefs(municipio) {
-    return fetch(URL_KB + "?accion=refs&municipio=" + encodeURIComponent(municipio)).then(function (r) { return r.json(); })
-      .then(function (d) { return (d && d.refs) || []; }).catch(function () { return []; });
+    return fetch(SUPA_URL_N + "/rest/v1/referencias?municipio=eq." + encodeURIComponent(municipio) + "&select=*&order=fecha.asc", { headers: { apikey: SUPA_ANON_N, Authorization: "Bearer " + SUPA_ANON_N } }).then(function (r) { return r.json(); })
+      .then(function (d) { return Array.isArray(d) ? d : []; }).catch(function () { return []; });
   }
-  function kbPost(obj) {
-    return fetch(URL_KB, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(obj) }).then(function (r) { return r.text(); }).catch(function () { return null; });
+  function kbPost(tabla, fila) {
+    return fetch(SUPA_URL_N + "/rest/v1/" + tabla, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPA_ANON_N, Authorization: "Bearer " + SUPA_ANON_N, Prefer: "return=minimal" }, body: JSON.stringify(fila) }).then(function (r) { return r.text(); }).catch(function () { return null; });
   }
   function kbGuardarRefs(lista, n) {
     if (!lista.length) return;
-    kbPost({ accion: "guardar_refs", refs: lista.map(function (w) { return { app: "FactiCuba-Datos", provincia: n.provincia, municipio: n.municipio, tema: w.sector, dato: w.hallazgo, fuente: w.fuente, url: w.url }; }) });
+    kbPost("referencias", lista.map(function (w) { return { app: "FactiCuba-Datos", provincia: n.provincia, municipio: n.municipio, tema: w.sector, dato: w.hallazgo, fuente: w.fuente, url: w.url }; }));
   }
   function kbGuardarEstudio(tipo) {
     var n = nec(); if (!n) return;
     var c = 0, u = 0;
     (n.filas || []).forEach(function (f) { var q = num(f.cantidad); c += q * num(f.costoCUP); u += q * num(f.costoUSD); });
-    kbPost({ accion: "guardar_estudio", estudio: { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: n.provincia, municipio: n.municipio, proyecto: "Plan de inversiones 2027-2032 — " + (n.municipio || ""), resumen: tipo, total_cup: Math.round(c), total_usd: Math.round(u), nota: tipo } });
+    kbPost("estudios", { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: n.provincia, municipio: n.municipio, proyecto_o_programa: "Plan de inversiones 2027-2032 — " + (n.municipio || ""), resumen: tipo, total_cup: Math.round(c), total_usd: Math.round(u), dictamen_o_nota: tipo });
   }
   var SECTORES = [
     ["Agua y saneamiento", /\b(agua|acueducto\w*|alcantarillad\w*|saneamiento|potabilizadora\w*|salidero\w*|cisterna\w*|hidraulic\w*)\b/],
@@ -2015,7 +2016,8 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
    del municipio. Doble frecuencia: anual la EDM, semestral cada PDL. */
 (function () {
   "use strict";
-  var URL_KB = "https://script.google.com/macros/s/AKfycbzDmBLwgQj0Mx-YKryieWePKs7jFO29FX5D1Mn3KLj9ICnkSUsJwztwtNzUHj6e_5PJ6g/exec";
+  var SUPA_URL_E = "https://uczlkdzvzbqgzzlhcmro.supabase.co";
+  var SUPA_ANON_E = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjemxrZHp2emJxZ3p6bGhjbXJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMzU2ODAsImV4cCI6MjExMDcxMTY4MH0.3xwFjVbL-Usa9hohxU0u__alXH8ZsdsJhH5CWllkH1M";
   var DIMS = [
     { dim: "Ambiental y ordenamiento", peso: 30 }, { dim: "Economía local", peso: 20 },
     { dim: "Soberanía alimentaria", peso: 15 }, { dim: "Calidad de vida", peso: 15 },
@@ -2147,7 +2149,7 @@ function refreshSetup(){ /* Creación de cuentas desactivada: solo existe el usu
         ". Dimensión ambiental: " + (r.d1 == null ? "sin datos" : r.d1 + "/100") +
         ". PDL evaluados: " + ev.fichas.length + " (" + ev.fichas.filter(function (f) { return f.dictamen; }).length + " con dictamen del CAM: " +
         ev.fichas.filter(function (f) { return f.dictamen; }).map(function (f) { return (f.nombre || "PDL") + " → " + f.dictamen; }).join("; ") + ").";
-      fetch(URL_KB, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ accion: "guardar_estudio", estudio: { app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: lg2.prov, municipio: lg2.muni, proyecto: "Evaluación EDM/PDL (Metodología v4.0)", resumen: resumen, total_cup: "", total_usd: "", dictamen: semaforo(r.total) } }) })
+      fetch(SUPA_URL_E + "/rest/v1/estudios", { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPA_ANON_E, Authorization: "Bearer " + SUPA_ANON_E, Prefer: "return=minimal" }, body: JSON.stringify({ app: "FactiCuba-Datos", usuario: (typeof currentUser !== "undefined" && currentUser) || "admin", provincia: lg2.prov, municipio: lg2.muni, proyecto_o_programa: "Evaluación EDM/PDL (Metodología v4.0)", resumen: resumen, total_cup: null, total_usd: null, dictamen_o_nota: semaforo(r.total) }) })
         .then(function () { toast("💾 Evaluación guardada en la Base de Conocimiento"); })
         .catch(function () { toast("Sin conexión: la evaluación quedó guardada en este equipo"); });
     });
