@@ -365,7 +365,7 @@ proyecto: { title:"Plantilla de Proyecto — datos completos para el estudio de 
   ["recPropios","Recursos propios (CUP y en divisas)","t","—"],
   ["prestamo","Préstamo bancario: banco, monto, plazo y tasa","t","Aprobado o a solicitar"],
   ["garantias","Garantías que aporta para el crédito","ta","Cartas de intención, contratos, bienes, cesión de cobros"],
-  ["fideicomiso","Crédito del Fondo de Fideicomiso (PDL)","t","Monto si lo solicita"],
+  ["fideicomiso","Fondo de Fideicomiso (PDL)","t","Monto si lo solicita"],
   ["presupuesto","Presupuesto territorial / Fondo de Desarrollo Local","t","Monto si aplica"],
   ["cooperacion","Cooperación o inversión extranjera","t","Monto y socio, si aplica"],
   ["totalFuentes","TOTAL de fuentes (debe igualar la inversión)","t","—"]]},
@@ -401,36 +401,88 @@ plan: { title:"Plantilla del Plan de Desarrollo Municipal (EDM)", sections: [
   ["periodo","Período que cubre el plan","t","—"],
   ["fechas","Fecha de aprobación y de última actualización","t","—"],
   ["organo","Órgano que lo aprueba (CAM)","t","—"],
-  ["documento","Documento fuente (nombre y fecha)","t","—"]]},
- {t:"2 · Diagnóstico del municipio", s:"Barreras numeradas como están en la EDM", fields:[
+  ["documento","Documento fuente (nombre y fecha)","t","—"],
+  ["versionEdm","Versión de la EDM","t","Ej.: EDM 2026-2030, versión aprobada"],
+  ["elaboradoPor","Elaborado por","t","Equipo o persona que elaboró la EDM"]]},
+ {t:"2 · Datos del territorio", s:"El municipio en cifras y rasgos, según la EDM y la ONEI", fields:[
+  ["extension","Extensión territorial","t","Ej.: 4 162,40 km² (85,01 de cayos)"],
+  ["costas","Costas","t","Ej.: 579,51 km"],
+  ["limites","Límites","ta","Municipios y accidentes geográficos que lo limitan"],
+  ["cabecera","Cabecera municipal","t","Ej.: Playa Larga"],
+  ["fundacion","Fundación","t","Ej.: fundado en 1976"],
+  ["consejosPopulares","Consejos Populares","t","Ej.: 3 — Playa Larga, Playa Girón, Cayo Ramona"],
+  ["asentamientos","Asentamientos","t","Ej.: 12 rurales y 4 urbanos"],
+  ["delegados","Delegados","t","Ej.: 32 delegados"],
+  ["baseEconomica","Base económica","ta","Ej.: turismo, conservación y pesca"],
+  ["historiaPatrimonio","Historia y patrimonio","ta","Hechos históricos y patrimonio del territorio"],
+  ["biodiversidad","Biodiversidad","ta","Ecosistemas y especies principales"],
+  ["categProteccion","Categorías de protección","t","Ej.: Reserva de la Biosfera UNESCO, sitio Ramsar"],
+  ["areasProtegidas","Áreas protegidas","ta","Una por línea, con su categoría"]]},
+ {t:"3 · Misión, visión y valores", s:"Tal como los formula la EDM", fields:[
+  ["mision","Misión","ta","—"],
+  ["vision","Visión","ta","—"],
+  ["valores","Valores","ta","Uno por línea; ej.: Sostenibilidad, Innovación, Transparencia, Eficiencia, Compromiso, Cultura, Salud"]]},
+ {t:"4 · Matriz DAFO", s:"Un elemento por línea en cada cuadrante", fields:[
+  ["debilidades","Debilidades","ta","Una por línea"],
+  ["amenazas","Amenazas","ta","Una por línea"],
+  ["fortalezas","Fortalezas","ta","Una por línea"],
+  ["oportunidades","Oportunidades","ta","Una por línea"]]},
+ {t:"5 · Potenciales, barreras y conflictos", s:"Barreras numeradas como están en la EDM", fields:[
   ["poblacion","Población total y rasgos principales","ta","—"],
   ["barreras","Problemas o barreras principales (numeradas)","ta","Una por línea"],
   ["potencial","Potencialidades y recursos endógenos","ta","Incluidas capacidades infrautilizadas"],
-  ["sectores","Sectores priorizados por el territorio","t","—"]]},
- {t:"3 · Líneas estratégicas y programas", s:"Un bloque por línea / programa", fields:[
+  ["sectores","Sectores priorizados por el territorio","t","—"],
+  ["conflictos","Conflictos del territorio","ta","Conflictos de uso o de intereses que la EDM reconoce"]]},
+ {t:"6 · Líneas estratégicas", s:"Las líneas de la EDM con su alcance", fields:[
   ["lineas","Línea o programa · objetivo · metas con indicador y año","ta","—"],
-  ["previstos","Proyectos ya previstos en el plan","ta","Nombre y estado"]]},
- {t:"4 · Metas cuantificadas", s:"Meta · indicador · valor base · meta del período · fuente", fields:[
-  ["metas","Metas del plan","ta","Una por línea"]]},
- {t:"5 · Restricciones del territorio", s:"Lo que limita lo posible", fields:[
+  ["previstos","Proyectos ya previstos en el plan","ta","Nombre y estado"],
+  ["lineasDetalle","Las líneas, una frase de alcance por línea","ta","L1 Producción de Alimentos · L2 Conservación y uso sostenible de la Biodiversidad · L3 Formación y gestión de capacidades · L4 Energía Renovable · L5 Exportaciones, cooperación internacional e inversión extranjera · L6 Bienestar y Hábitat"]]},
+ {t:"7 · Políticas públicas locales", s:"Una política por línea: objetivo general, lineamientos y metas por plazo", fields:[
+  ["politicaL1","Política de la Línea 1 — Producción de Alimentos","ta","Con la Ley 148/2022 de Soberanía Alimentaria como marco"],
+  ["politicaL2","Política de la Línea 2 — Conservación y Biodiversidad","ta","—"],
+  ["politicaL3","Política de la Línea 3 — Formación y Capacidades","ta","—"],
+  ["politicaL4","Política de la Línea 4 — Energía Renovable","ta","—"],
+  ["politicaL5","Política de la Línea 5 — Exportaciones, Cooperación e Inversión Extranjera","ta","Turismo de naturaleza y rural"],
+  ["politicaL6","Política de la Línea 6 — Bienestar y Hábitat","ta","—"],
+  ["marcoJuridico","Marco jurídico de la EDM","ta","Vigente: Decreto 174/2026, Res. 70/2026 del MEP, Res. 202/2026 del MFP, Res. 118/2026 del BCC. Derogados: Decreto 33/2021 y Res. 29/2021"],
+  ["accionesResultados","Acciones y resultados esperados","ta","—"]]},
+ {t:"8 · Programas", s:"Los programas de la EDM", fields:[
+  ["programas","Programas con su descripción breve","ta","Uno por línea; ej.: Educación Ambiental · Responsabilidad Social «Rafael María de Mendive» · Manejo de desechos sólidos · Economía Social y Solidaria «Viva mi Barrio» · Turismo Local Sostenible · Producción de alimentos sanos · Fuentes renovables de energía · Manejo sostenible del APRM · Fomento de exportaciones, cooperación internacional e inversión extranjera"],
+  ["programasResp","Responsable de cada programa","ta","Uno por línea"]]},
+ {t:"9 · Cartera de proyectos", s:"Proyectos del territorio y su estado", fields:[
+  ["carteraPDL","Cartera de PDL con su estado","ta","Uno por línea; ej.: Finca Yatobá · La Cantera · Agro Vivo (en reformulación) · Finca Morejón (en formulación) · Finca Los Cocos (en formulación) · Caminos al Vuelo (en formulación) · Recuperación de suelos y manejo del agua (en formulación) · Puerto Pesquero Caletón (en formulación)"],
+  ["otrosProyectos","Otros proyectos del territorio","ta","Fuera de la cartera PDL, uno por línea"]]},
+ {t:"10 · Metas e indicadores", s:"Meta · indicador · valor base · meta del período · fuente", fields:[
+  ["metas","Metas del plan","ta","Una por línea"],
+  ["metasCorto","Metas de corto plazo (2026-2027)","ta","Por línea, una por línea"],
+  ["metasMediano","Metas de mediano plazo (2028-2029)","ta","Por línea, una por línea"],
+  ["metasLargo","Metas de largo plazo (2030)","ta","Por línea, una por línea"],
+  ["tableroIndicadores","Tablero de indicadores","ta","Indicador · línea base 2026 · meta intermedia · meta 2030, uno por línea"]]},
+ {t:"11 · Restricciones del territorio", s:"Lo que limita lo posible", fields:[
   ["monetaria","Restricción monetaria / de divisas","t","—"],
   ["energetica","Restricción energética","t","—"],
   ["logistica","Restricción logística / de importación","t","—"],
   ["regulatoria","Restricción regulatoria / sectorial","t","—"],
   ["otrasR","Otras restricciones","t","—"]]},
- {t:"6 · Demanda insatisfecha y oportunidades", s:"Déficits que tu proyecto puede cubrir", fields:[
+ {t:"12 · Demanda insatisfecha y oportunidades", s:"Déficits que tu proyecto puede cubrir", fields:[
   ["deficit","Producto o servicio con déficit local · déficit estimado · observaciones","ta","Uno por línea"],
   ["necesidades","Necesidades de la población sin cubrir","ta","—"]]},
- {t:"7 · Financiamiento territorial", s:"Arts. 29-32 del Decreto 174/2026", fields:[
+ {t:"13 · Financiamiento territorial", s:"Arts. 29-32 del Decreto 174/2026", fields:[
   ["fondo","Fondo de Desarrollo Local: monto disponible si consta","t","—"],
   ["fid","Fondo de Fideicomiso para PDL: condiciones si constan","t","—"],
   ["criterios","Criterios del CAM para aprobar proyectos","ta","—"],
   ["sectoresF","Sectores con prioridad de financiamiento","t","—"]]},
- {t:"8 · Presentación y seguimiento", s:"Dónde se presenta y quién da seguimiento", fields:[
+ {t:"14 · Presentación, seguimiento y aprobación", s:"Dónde se presenta, quién da seguimiento y cómo se aprueba", fields:[
   ["donde","Dónde y ante quién se presenta un proyecto","t","Dirección de Desarrollo"],
   ["responsable","Responsable de desarrollo local y contacto","t","—"],
   ["periodicidad","Periodicidad de la evaluación de los proyectos","t","La norma prevé revisión al menos semestral"],
-  ["fechaCons","Fecha de consulta de la fuente","t","__________"]]}
+  ["fechaCons","Fecha de consulta de la fuente","t","__________"],
+  ["evaluacionAnual","Evaluación anual","ta","Informe de diciembre al CAM y a la Asamblea Municipal (AMPP)"],
+  ["actualizacion","Actualización de la EDM","ta","Al final del mandato, según la norma"],
+  ["modeloOrdenamiento","Articulación con el ordenamiento ambiental","ta","Relación con el Modelo de Ordenamiento Ambiental (MOA)"],
+  ["participacion","Participación","ta","Actores y momentos de consulta y participación"],
+  ["aprobadoCAM","Aprobación del CAM","t","Fecha y número de acuerdo"],
+  ["elevadoAMPP","Elevación a la AMPP","t","Fecha de elevación"]]}
  ]},
 onei: { title:"Plantilla de Datos ONEI del municipio", sections: [
  {t:"1 · Población", s:"En CADA bloque escriba el AÑO y el DOCUMENTO fuente", fields:[
